@@ -1,0 +1,32 @@
+{
+  "name": "Web3 Dev (Hardhat + Viem)",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:24",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "24"
+    }
+  },
+//"postCreateCommand": "mkdir -p backend frontend && cd backend && npm init -y && npm install --save-dev hardhat@^2 @nomicfoundation/hardhat-toolbox@latest dotenv@latest && touch .env && cd ../frontend && rm -rf node_modules package.json package-lock.json && CI=1 npm create vite@latest . -- --template react-ts && npm install viem@latest wagmi@latest",
+"postCreateCommand": "mkdir -p backend frontend && cd backend && npm init -y && npm install --save-dev hardhat@latest dotenv@latest && touch .env && cd ../frontend && rm -rf node_modules package.json package-lock.json && CI=1 npm create vite@latest . -- --template react-ts && npm install viem@latest wagmi@latest",
+
+  "forwardPorts": [
+    5173,  // Vite (frontend) - siempre necesario
+    8545   // Hardhat node (backend) - opcional, útil si quieres conectarte con Metamask desde fuera
+  ],
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "nomicfoundation.hardhat-solidity",
+        "eamodio.gitlens",
+        "esbenp.prettier-vscode",
+        "dbaeumer.vscode-eslint",
+        "github.copilot",
+        "github.copilot-chat",
+        "dsznajder.es7-react-js-snippets",
+        "bradlc.vscode-tailwindcss",
+        "formulahendry.auto-rename-tag",
+        "ms-vscode.vscode-typescript-next"
+      ]
+    }
+  }
+}
