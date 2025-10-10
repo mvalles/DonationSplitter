@@ -10,30 +10,32 @@ npx hardhat test
 npx hardhat test solidity
 ```
 
-# Desplegar contrato inteligente
-Ver: [Deploying Smart Contracts](https://hardhat.org/docs/learn-more/deploying-contracts)
+## Deploy the smart contract
+Reference: [Deploying Smart Contracts](https://hardhat.org/docs/learn-more/deploying-contracts)
 
-> Se puede desplegar el contrato directamente en red:
-> - hardhat: red local, solo activa mientras se ejecuta el comando
-> - localhost: tras arrancarla con `npx hardhat node` se añade al comando `npx hardhat ignition deploy --network localhost ignition/modules/Lock.ts` el parámetro `--network`.
-> - se puede configurar el `networks` del `fichero hardhat.config.js` y configurar `sepolia` (testnet) por ejemplo.
+> You can deploy the contract to different networks:
+> - hardhat: ephemeral in‑memory local network that exists only for the duration of the command you run.
+> - localhost: after starting a persistent node with `npx hardhat node`, append `--network localhost` to deployment commands (e.g. `npx hardhat ignition deploy --network localhost ignition/modules/Lock.ts`).
+> - You can configure additional networks (e.g. `sepolia` testnet) inside `hardhat.config.js` under the `networks` field.
 
-En el fichero `hardhat.config.js` añadir: (ver si es necesario porque ya cargo datos privados como se muestra más abajo)
+Add to `hardhat.config.ts` (or `.js`) if you need environment variable loading (may already be handled elsewhere):
 
 ```typescript
 import "dotenv/config";
 ```
 
-Añadir `SEPOLIA_RPC_URL`y `SEPOLIA_PRIVATE_KEY` al encrypted secrets manager de hardhat:
-[Deploying Smart Contracts](https://hardhat.org/docs/learn-more/deploying-contracts)
+Add `SEPOLIA_RPC_URL` and `SEPOLIA_PRIVATE_KEY` to Hardhat's encrypted secrets manager:
 ```bash
 npx hardhat keystore set SEPOLIA_RPC_URL
 npx hardhat keystore set SEPOLIA_PRIVATE_KEY
 ```
 
-Para listar las claves almacenadas en el keystore, ejecutar: `npx hardhat keystore list`.
+List stored keys:
+```bash
+npx hardhat keystore list
+```
 
-## Despliegues
+## Deployments
 ```bash
 npx hardhat ignition deploy ignition/modules/Counter.ts
-npx hardhat ignition deploy --network localhost ignition/modules/Counter.ts # tras npx hardhat node
+npx hardhat ignition deploy --network localhost ignition/modules/Counter.ts # after starting local node: npx hardhat node

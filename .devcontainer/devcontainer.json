@@ -6,12 +6,11 @@
       "version": "24"
     }
   },
-//"postCreateCommand": "mkdir -p backend frontend && cd backend && npm init -y && npm install --save-dev hardhat@^2 @nomicfoundation/hardhat-toolbox@latest dotenv@latest && touch .env && cd ../frontend && rm -rf node_modules package.json package-lock.json && CI=1 npm create vite@latest . -- --template react-ts && npm install viem@latest wagmi@latest",
-"postCreateCommand": "mkdir -p backend frontend && cd backend && npm init -y && npm install --save-dev hardhat@latest dotenv@latest && touch .env && cd ../frontend && rm -rf node_modules package.json package-lock.json && CI=1 npm create vite@latest . -- --template react-ts && npm install viem@latest wagmi@latest",
-
+//"postCreateCommand": "mkdir -p backend frontend && cd backend && [ ! -f package.json ] && npm init -y && npm install --save-dev hardhat@latest dotenv@latest && touch .env && cd ../frontend && [ ! -f package.json ] && rm -rf node_modules package.json package-lock.json && CI=1 npm create vite@latest . -- --template react-ts && npm install viem@latest wagmi@latest @tanstack/react-query@lates",
+  "postCreateCommand": "bash .devcontainer/init.sh",
   "forwardPorts": [
-    5173,  // Vite (frontend) - siempre necesario
-    8545   // Hardhat node (backend) - opcional, útil si quieres conectarte con Metamask desde fuera
+    5173,  // Vite (frontend) - always needed
+    8545   // Hardhat node (backend) - optional, useful if you want to connect with MetaMask from outside
   ],
   "customizations": {
     "vscode": {
