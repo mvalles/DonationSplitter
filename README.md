@@ -16,26 +16,17 @@ frontend/  React + Vite + wagmi/viem dashboard UI
 - Frontend UI & customization: [frontend/README.md](./frontend/README.md)
 
 ---
-## 1. Architecture
-Flow (simplified):
+## 1. Architecture (Overview)
+High‑level flow:
 ```
-User Wallet -> Frontend (React + wagmi/viem) -> Ethereum Network (Sepolia/Mainnet) -> DonationSplitter Contract
-					|                                         |
-					+-- reads beneficiaryTotals() ------------+
-					+-- donateETH() / withdrawETH() txs ------+
+Wallet → Frontend (React + wagmi/viem) → Ethereum (target chain) → DonationSplitter
+             ^                                |
+             +----- periodic reads (beneficiaryTotals, pendingEth, balances)
 ```
+Core contract API (summary – full table in backend README): donateETH(), withdrawETH(), beneficiaryTotals(address).
+Events: DonationRecorded, Withdrawn, BeneficiariesUpdated.
 
-Key contract surface:
-- `donateETH()` (payable) – records donation and internally apportions pending shares.
-- `withdrawETH()` – beneficiary pulls their accumulated pending allocation (updates withdrawn tracking).
-- `beneficiaryTotals(address)` – view returning (pending, withdrawn, lifetime).
-- Events: `DonationRecorded`, `Withdrawn`, `BeneficiariesUpdated`.
-
-Frontend highlights:
-- Real‑time polling of aggregated pending/withdrawn values via multicall.
-- Stacked visualization (withdrawn vs pending) per beneficiary.
-- Mainnet safety confirmation & network mismatch handling.
-- Theming (dark/light) + responsive layout optimizations.
+UI features: real‑time polling, stacked activity bars (withdrawn vs pending), target‑anchored reads (avoid flicker on wallet network change), minimal mismatch notice, theming.
 
 ---
 ## 2. Getting Started (Local Dev)
@@ -65,80 +56,40 @@ npm run dev
 Update the contract address in `frontend/src/contractInfo.ts` with the one printed by Ignition (if it changed).
 
 ---
-## 3. Environment Variables
+## 3. Environment Variables (Pointers)
+Canonical, always‑updated details:
+- Backend env & DS_ENV selection: see [backend/README.md](./backend/README.md#environment--secrets)
+- Frontend env (target selection, optional Hardhat RPC): see `frontend/README.md` (section Environment)
 
-### Backend (`backend/.env` or keystore)
+Quick recall:
 ```
-# RPC endpoints
-SEPOLIA_RPC_URL=https://sepolia.infura.io/v3/<key>
-MAINNET_RPC_URL=https://mainnet.infura.io/v3/<key>
-
-# Deployer private keys (NEVER commit)
-SEPOLIA_PRIVATE_KEY=0x<64hex>
-MAINNET_PRIVATE_KEY=0x<64hex>
-
-# Optional safety flag for mainnet deploy
-MAINNET_DEPLOY=1
+DS_ENV=dev|sepolia|mainnet   # backend deploy selection
+VITE_TARGET_CHAIN=local|sepolia|mainnet  # dashboard read/label target
+VITE_HARDHAT_RPC=<remote-hardhat-url>    # optional; enables remote Codespaces access
 ```
-At deploy time set the beneficiary config environment:
-`DS_ENV=dev | sepolia | mainnet` (defaults to `dev` if unset).
-
-### Frontend (`frontend/.env`)
-```
-VITE_TARGET_CHAIN=local   # local | sepolia | mainnet (aliases: localhost/hardhat -> local, sep -> sepolia, main -> mainnet)
-VITE_HARDHAT_RPC=https://<codespace-subdomain>-8545.app.github.dev  # optional remote hardhat URL
-#VITE_DEBUG_NETWORK=1      # enable extra debug panel
-```
-If deploying dashboard for Sepolia in Vercel, set:
-```
-VITE_TARGET_CHAIN=sepolia
-```
-And ensure `DONATION_SPLITTER_ADDRESSES[11155111]` in `src/contractInfo.ts` is the latest deployed address.
+Set `VITE_DEBUG_NETWORK=1` (frontend) to surface the debug chain panel (development only).
 
 ---
-## 4. Deployment Cheat‑Sheet
-Local (Hardhat dev config):
-```bash
-DS_ENV=dev npx hardhat ignition deploy --network localhost ignition/modules/DonationSplitter.ts
-```
-Sepolia:
-```bash
-DS_ENV=sepolia npx hardhat ignition deploy --network sepolia ignition/modules/DonationSplitter.ts
-```
-Mainnet (after audits / review):
-```bash
-DS_ENV=mainnet MAINNET_DEPLOY=1 npx hardhat ignition deploy --network mainnet ignition/modules/DonationSplitter.ts
-```
+## 4. Deployment (Short Form)
+Backend deploy commands (full guidance, safety flags, beneficiary JSON rules): see [backend/README.md](./backend/README.md#deploy-testnet--mainnet).
 
-After any redeploy: update `contractInfo.ts` address map + append a row to backend deployment history table.
+Lifecycle reminder after deploy:
+1. Append row to backend Deployment History.
+2. Update `frontend/src/contractInfo.ts` address map.
+3. Trigger frontend rebuild (e.g. Vercel) if public dashboard.
 
 ---
-## 5. Current Testnet Deployment
-Authoritative table: [backend/README.md](./backend/README.md#deployment-history). Latest Sepolia address (sync this if changed):
-```
-0xcb9CB1159999fBd1cf0AC07c7eE6de8A148A2D8d
-```
+## 5. Current Deployments
+For authoritative addresses & provenance: see backend Deployment History table.
 
 ---
-## 6. Customizing Beneficiaries
-Edit `frontend/src/beneficiaries.ts` (labels, addresses, bps, logos). Keep total BPS = 10000. Redeploy backend if you alter the constructor beneficiary list.
-
-On-chain constructor distribution sources the JSON file in `backend/beneficiaries/<env>.json` selected by `DS_ENV`. Keep that JSON and frontend list logically aligned (frontend adds presentation metadata; contract uses only address+bps).
+## 6. Beneficiaries Configuration
+On-chain source of truth: JSON files in `backend/beneficiaries/` (picked by DS_ENV). UI metadata (logos, descriptions) lives in `frontend/src/beneficiaries.ts`.
+Rules & validation: see backend README (section Modifying Beneficiaries). Ensure total BPS = 10000 before any deploy.
 
 ---
-## 7. Deploying Frontend to Vercel (Sepolia example)
-1. Push repository to GitHub.
-2. Import project in Vercel.
-3. Set build command (auto from `package.json`): `npm run build` inside `frontend` (either set root to `frontend/` or use monorepo config with `rootDirectory`).
-4. Environment Variables in Vercel UI:
-	- `VITE_TARGET_CHAIN=sepolia`
-	- (Optional) `VITE_HARDHAT_RPC=https://...` if you want fallback local simulation.
-5. Redeploy. Confirm console log in browser shows resolved target chain.
-6. When upgrading contract: redeploy backend, update `contractInfo.ts`, trigger new Vercel build.
-
-Optional hardening:
-- Set `X-Frame-Options: DENY` (Vercel Security Headers) if you add a custom config.
-- Enable analytics only after privacy review.
+## 7. Frontend Deployment
+Detailed Vercel / hosting steps: see `frontend/README.md` (deployment section). This root file only tracks contract / config interplay.
 
 ## 8. Contributing / Next Steps
 - Add historical charts (index events off‑chain)

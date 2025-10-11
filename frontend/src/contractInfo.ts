@@ -1,8 +1,8 @@
 // DonationSplitter contract addresses per network (extend as you deploy)
 // NOTE: Keep these in sync with backend deployment history & JSON beneficiary configs.
 export const DONATION_SPLITTER_ADDRESSES: Record<number, `0x${string}`> = {
-  31337: "0x5FbDB2315678afecb367f032d93F642f64180aa3", // Hardhat local (example / typical default)
-  11155111: "0x849E04a51573F61B33DeFA318fEDBF444240bAFb", // Sepolia testnet
+  31337: "0x5FbDB2315678afecb367f032d93F642f64180aa3",    // Hardhat local (example / typical default)
+  11155111: "0xDAD9ccC85a59db6D2eFDC7fDDE9A1E6e3D17b798", // Sepolia testnet (updated 2025-10-07)
   // 1: "0x..." // Mainnet (to add when deployed)
 };
 
