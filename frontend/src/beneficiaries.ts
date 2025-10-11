@@ -14,7 +14,7 @@ export interface BeneficiaryInfo {
 export const BENEFICIARIES: BeneficiaryInfo[] = [
   {
     label: 'UNICEF',
-    address: '0x1111111111111111111111111111111111111111',
+    address: '0x70997970c51812dc3a010c7d01b50e0d17dc79c8',
     bps: 1000,
     icon: '🧒', // fallback
     logoId: 'unicef',
@@ -24,7 +24,7 @@ export const BENEFICIARIES: BeneficiaryInfo[] = [
   },
   {
     label: 'MSF / Doctors Without Borders',
-    address: '0x2222222222222222222222222222222222222222',
+    address: '0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc',
     bps: 2000,
     icon: '🏥',
     logoId: 'msf',
@@ -34,7 +34,7 @@ export const BENEFICIARIES: BeneficiaryInfo[] = [
   },
   {
     label: 'IFRC / Red Cross',
-    address: '0x3333333333333333333333333333333333333333',
+    address: '0x90f79bf6eb2c4f870365e785982e1f101e93b906',
     bps: 3000,
     icon: '⛑️',
     logoId: 'ifrc',
@@ -44,7 +44,7 @@ export const BENEFICIARIES: BeneficiaryInfo[] = [
   },
   {
     label: 'Save the Children',
-    address: '0x4444444444444444444444444444444444444444',
+    address: '0x15d34aaf54267db7d7c367839aaf71a00a2c6a65',
     bps: 4000,
     icon: '📚',
     logoId: 'savethechildren',

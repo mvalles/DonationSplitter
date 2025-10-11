@@ -6,9 +6,9 @@ import { useAccount, useConnect, useDisconnect, useReadContract, useBalance, use
 import { useDonateETH, useWithdrawETH } from './contractWriteHooks';
 import { useRefetchKey } from './RefetchContext';
 import { metaMask } from 'wagmi/connectors';
-import { DONATION_SPLITTER_ADDRESS, DONATION_SPLITTER_ABI, type DonationSplitterAbi } from './contractInfo';
+import { DONATION_SPLITTER_ABI, type DonationSplitterAbi, getDonationSplitterAddress, TARGET_CHAIN_ID as CONFIG_TARGET_CHAIN_ID, TARGET_CHAIN_LABEL } from './contractInfo';
 import DonationSplitArt from './DonationSplitArt';
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { BENEFICIARIES, beneficiariesTotalBps, formatPercent } from './beneficiaries';
 import { getChainInfo, makeAddressLink } from './chainMeta';
 import { OrgLogo } from './orgLogos';
@@ -23,23 +23,50 @@ function App() {
   const { disconnect } = useDisconnect();
   const [ethAmount, setEthAmount] = useState('');
   const [showMainnetConfirm, setShowMainnetConfirm] = useState(false);
-  const TARGET_CHAIN_ID = 11155111; // Contract deployment chain (Sepolia)
+  // Target chain (from env) determining which contract we show when no wallet is connected
+  const TARGET_CHAIN_ID = CONFIG_TARGET_CHAIN_ID;
   const [donateError, setDonateError] = useState<string | null>(null);
   const [withdrawError, setWithdrawError] = useState<string | null>(null);
 
     // Refetch context
   const { bump } = useRefetchKey();
     // Read pending balance for the connected user
+    const runtimeAddress = getDonationSplitterAddress(chainId);
+    // Determine active chain early (needed for mismatch gating)
+    const activeChain = chains.find(c => c.id === chainId);
+    const isMainnet = activeChain?.id === 1;
+    // Additional provider-based detection (covers cases where wagmi chainId not refreshed)
+    const [providerChainId, setProviderChainId] = useState<number|undefined>(undefined);
+    // Initialize provider chain id and subscribe to changes
+    React.useEffect(() => {
+      const win = window as unknown as { ethereum?: { request: (args:{method:string})=>Promise<string>; on?: (ev:string, cb:(p:string)=>void)=>void; removeListener?: (ev:string, cb:(p:string)=>void)=>void } };
+      if (!win.ethereum) return;
+      let mounted = true;
+      win.ethereum.request({ method: 'eth_chainId' }).then((cid: string) => {
+        if (!mounted) return;
+        const parsed = Number(cid);
+        if (!isNaN(parsed)) setProviderChainId(parsed);
+      }).catch(()=>{});
+      const handler = (cid: string) => {
+        if (!mounted) return;
+        const parsed = Number(cid);
+        if (!isNaN(parsed)) setProviderChainId(parsed);
+      };
+      win.ethereum.on?.('chainChanged', handler);
+      return () => { mounted = false; win.ethereum?.removeListener?.('chainChanged', handler); };
+    }, []);
+  const effectiveChainId = providerChainId ?? chainId; // prefer provider direct reading
+  const mismatch = isConnected && effectiveChainId !== undefined && effectiveChainId !== TARGET_CHAIN_ID; // mismatch only matters once wallet is connected
     const { data: pendingEth, refetch } = useReadContract({
-      address: DONATION_SPLITTER_ADDRESS,
+      address: runtimeAddress,
       abi: DONATION_SPLITTER_ABI,
       functionName: 'pendingEth',
       args: address ? [address] : undefined,
-      query: { enabled: isConnected, refetchInterval: 5000 },
+      query: { enabled: isConnected && !mismatch, refetchInterval: 5000 },
     });
     // Read total contract balance
     const { data: contractBalance } = useBalance({
-      address: DONATION_SPLITTER_ADDRESS,
+      address: runtimeAddress,
       // periodic refetch to keep fresh data
       query: { enabled: true, refetchInterval: 5000 },
     });
@@ -49,9 +76,7 @@ function App() {
       query: { enabled: !!address, refetchInterval: 5000 },
     });
 
-  const activeChain = chains.find(c => c.id === chainId);
-  const isMainnet = activeChain?.id === 1;
-  const mismatch = activeChain && activeChain.id !== TARGET_CHAIN_ID;
+  // activeChain / isMainnet / mismatch already defined above for early gating
     function truncateAddress(addr?: string) {
       if (!addr) return '';
       return addr.slice(0, 6) + '...' + addr.slice(-4);
@@ -60,6 +85,9 @@ function App() {
     // Contract write hooks
   const { donateETH } = useDonateETH();
     const { withdrawETH, isPending: isWithdrawing } = useWithdrawETH();
+
+    // Provide a helper to request network switch when mismatch
+    // Removed network switch helper per simplification request
 
   return (
     <div className="app-shell app-shell-compact">
@@ -84,6 +112,7 @@ function App() {
             <p className="hero-subtitle" style={{ textAlign:'left', margin:'0', maxWidth:620, fontSize:'.9rem' }}>
               Automatically split your contributions across multiple beneficiaries transparently & verifiably on-chain.
             </p>
+            {/* Simplified: no inline mismatch badge here */}
           </div>
         </div>
         {!isConnected && (
@@ -106,6 +135,7 @@ function App() {
         )}
       </header>
       <section style={{ paddingTop:'.25rem' }}>
+        {/* No global banner; show a single concise English notice inside wallet panel & donate panel */}
         {showMainnetConfirm && isMainnet && !mismatch && (
           <div style={{ position:'fixed', inset:0, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(0,0,0,0.6)', zIndex:1000 }}>
             <div className="card" style={{ maxWidth:420 }}>
@@ -136,10 +166,17 @@ function App() {
         )}
         {!isConnected && (
           <div className="card beneficiaries-card" style={{ marginBottom: '1.5rem' }}>
-            <div style={{ fontSize:'.6rem', background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.12)', padding:'.5rem .65rem', borderRadius:'8px', lineHeight:1.3, marginBottom:'.4rem', color:'var(--text-secondary)' }}>
-              Public dashboard mode: connect only if you intend to donate or simulate. Aggregated metrics (pending / withdrawn / lifetime) refresh near real-time from on‑chain state.
-            </div>
             <BeneficiariesCard />
+            <div style={{ marginTop:'.7rem', fontSize:'.6rem', background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.12)', padding:'.5rem .65rem', borderRadius:'8px', lineHeight:1.3, color:'var(--text-secondary)' }}>
+              Public dashboard mode: connect only if you intend to donate or simulate. Aggregated metrics (pending / withdrawn / lifetime) refresh near real-time from on-chain state.
+            </div>
+          </div>
+        )}
+        {isConnected && mismatch && (
+          <div className="card" style={{ marginBottom: '1rem', border:'1px solid rgba(255,170,0,0.35)', background:'rgba(255,170,0,0.10)' }}>
+            <div style={{ fontSize:'.65rem', lineHeight:1.4 }}>
+              Network mismatch: your wallet is on {activeChain?.name} (id {activeChain?.id}) while the dashboard target is {TARGET_CHAIN_LABEL} (id {TARGET_CHAIN_ID}). Data shown comes from the target chain. Switch networks before sending transactions.
+            </div>
           </div>
         )}
         {isConnected && (
@@ -171,18 +208,18 @@ function App() {
                 </div>
                 <div style={{ display:'flex', flexDirection:'column', gap:'.35rem', marginTop:'.35rem' }}>
                   <a
-                    href={makeAddressLink(activeChain?.id || TARGET_CHAIN_ID, DONATION_SPLITTER_ADDRESS)}
+                    href={makeAddressLink(activeChain?.id || TARGET_CHAIN_ID, runtimeAddress)}
                     target="_blank"
                     rel="noopener noreferrer"
                     style={{ fontSize:'.6rem', textDecoration:'none', display:'inline-flex', alignItems:'center', gap:'.4rem', background:'rgba(255,255,255,0.06)', padding:'.4rem .55rem', borderRadius:'6px', border:'1px solid rgba(255,255,255,0.12)', color:'var(--accent-alt)' }}
                     title="View contract on explorer"
                   >
                     <span style={{ fontWeight:600 }}>Contract</span>
-                    <span className="mono" style={{ fontSize:'.55rem' }}>{truncateAddress(DONATION_SPLITTER_ADDRESS)}</span>
+                    <span className="mono" style={{ fontSize:'.55rem' }}>{truncateAddress(runtimeAddress)}</span>
                     <span style={{ fontSize:'.65em', opacity:.7 }}>↗</span>
                   </a>
                   {mismatch && (
-                    <div className="alert" style={{ margin:0 }}>Mismatch: Connected {activeChain?.name} vs Contract Sepolia. Switch network before interacting.</div>
+                    <div className="alert" style={{ margin:0 }}>Network mismatch: wallet {activeChain?.name} vs target {TARGET_CHAIN_LABEL}. Data shown = target. Switch network to interact.</div>
                   )}
                 </div>
                 {isMainnet && (
@@ -200,7 +237,7 @@ function App() {
               <h2>Donate ETH</h2>
               {mismatch && (
                 <div className="alert" style={{ marginTop: '.3rem' }}>
-                  Connected network {activeChain?.name} (id {activeChain?.id}) differs from contract network Sepolia (id {TARGET_CHAIN_ID}). Switch before donating.
+                  Wallet {activeChain?.name} (id {activeChain?.id}) ≠ target {TARGET_CHAIN_LABEL} (id {TARGET_CHAIN_ID}). Read‑only mode until you switch.
                 </div>
               )}
               <form className="donate-form"
@@ -240,7 +277,7 @@ function App() {
                 <button className="btn" type="submit" disabled={mismatch}>Donate</button>
               </form>
               {donateError && <p className="alert" style={{ marginTop: '.5rem' }}>Donate error: {donateError}</p>}
-                {mismatch && <p className="note" style={{ marginTop: '.5rem' }}>Switch to Sepolia to enable donations (contract is deployed there).</p>}
+                    {mismatch && <p className="note" style={{ marginTop: '.5rem' }}>Switch wallet network to id {TARGET_CHAIN_ID} to enable donations.</p>}
             </div>
             {/* Withdraw Panel */}
             <div className="card">
@@ -294,7 +331,7 @@ function HowItWorks() {
   const [open, setOpen] = useState(false);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+      <div className="card-header-row">
         <h2 style={{ margin: 0 }}>How It Works</h2>
         <button
           type="button"
@@ -326,9 +363,23 @@ function HowItWorks() {
 // Beneficiaries list card
 function BeneficiariesCard() {
   const total = beneficiariesTotalBps();
-  // Dynamic chain id (fallback to 11155111 if undefined)
-  const dynamicChainId = useChainId?.() || 11155111;
-  const chainInfo = getChainInfo(dynamicChainId) || getChainInfo(11155111);
+  // Dynamic chain id; do not force Sepolia if unknown so we don't mislabel local networks
+  const currentChainId = useChainId?.();
+  const chainInfo = currentChainId ? getChainInfo(currentChainId) : undefined; // wagmi notion
+  // Local provider chain detection (independent of wagmi hook) to reflect real wallet even if hook stale
+  const [provChainId, setProvChainId] = useState<number|undefined>();
+  // Effective wallet network (provider preferred to avoid stale wagmi)
+  const walletEffectiveId = typeof provChainId !== 'undefined' ? provChainId : currentChainId;
+  const walletEffectiveInfo = walletEffectiveId ? getChainInfo(walletEffectiveId) : undefined;
+  React.useEffect(() => {
+    const win = window as unknown as { ethereum?: { request: (args:{method:string})=>Promise<string>; on?: (ev:string, cb:(p:string)=>void)=>void; removeListener?: (ev:string, cb:(p:string)=>void)=>void } };
+    if (!win.ethereum) return;
+    let mounted = true;
+    win.ethereum.request({ method:'eth_chainId' }).then(cid => { if (!mounted) return; const n=Number(cid); if(!isNaN(n)) setProvChainId(n); }).catch(()=>{});
+    const handler = (cid:string) => { if (!mounted) return; const n=Number(cid); if(!isNaN(n)) setProvChainId(n); };
+    win.ethereum.on?.('chainChanged', handler);
+    return () => { mounted=false; win.ethereum?.removeListener?.('chainChanged', handler); };
+  }, []);
   const { pendingPerBeneficiary, withdrawnPerBeneficiary, anyLoading, totalPending, totalWithdrawn } = useBeneficiaryFinancials();
   const totalLifetime = totalPending + totalWithdrawn;
   const [theme, setTheme] = useState<'dark'|'light'>(() => (localStorage.getItem('ds_theme') as 'dark'|'light') || 'dark');
@@ -341,50 +392,72 @@ function BeneficiariesCard() {
     setCopiedMap(m => ({ ...m, [addr]: true }));
     setTimeout(() => setCopiedMap(m => ({ ...m, [addr]: false })), 1200);
   }
+  // Configured target (from env) for display when no wallet is connected
+  const configuredNameMap: Record<number,string> = { 31337:'Hardhat Local', 11155111:'Sepolia', 1:'Ethereum Mainnet' };
+  const configuredId: number = typeof CONFIG_TARGET_CHAIN_ID !== 'undefined'
+    ? CONFIG_TARGET_CHAIN_ID
+    : (() => {
+        const rawVal = (import.meta as unknown as { env?: Record<string, unknown> })?.env?.VITE_TARGET_CHAIN || '';
+        const raw = String(rawVal).trim().toLowerCase();
+        if (raw === 'local' || raw === 'localhost' || raw === 'hardhat') return 31337;
+        if (raw === 'mainnet' || raw === 'main') return 1;
+        return 11155111;
+      })();
+  const configuredName = configuredNameMap[configuredId] || 'Unknown';
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
-      <div className="beneficiaries-header" style={{ alignItems:'flex-start' }}>
-        <div style={{ display:'flex', width:'100%', alignItems:'center', flexWrap:'wrap', gap:'.6rem' }}>
-          <div style={{ display:'flex', alignItems:'center', flexWrap:'wrap', gap:'.6rem', flex:1 }}>
-            <h2 style={{ margin: 0 }}>Beneficiaries</h2>
-            {chainInfo && (
-              <span style={{ fontSize:'.6rem', letterSpacing:'.5px', padding:'.35rem .6rem', borderRadius:'999px', background: chainInfo.testnet ? 'linear-gradient(135deg,#3b3f52,#272b37)' : 'linear-gradient(135deg,#4e1218,#2a0d10)', border:'1px solid rgba(255,255,255,0.18)', display:'inline-flex', gap:'.4rem', alignItems:'center', fontWeight:600 }}>
-                {chainInfo.testnet ? 'TESTNET' : 'MAINNET'}: {chainInfo.name}{chainInfo.testnet && <span style={{ color:'var(--warn)', fontWeight:700 }}> Not real ETH</span>}
+      <div className="beneficiaries-header" style={{ display:'flex', flexDirection:'column', gap:'.4rem' }}>
+        {/* Line 1: Title left (like How It Works) + badges pushed to right */}
+        <div className="card-header-row beneficiaries-main" style={{ alignItems:'flex-start', width:'100%' }}>
+          <h2 style={{ margin:0 }}>Beneficiaries</h2>
+          <div style={{ display:'flex', alignItems:'center', gap:'.65rem', flexWrap:'wrap', justifyContent:'flex-end' }}>
+            <span style={{ fontSize:'.6rem', letterSpacing:'.5px', padding:'.35rem .65rem', borderRadius:'999px', background: configuredId === 1 ? 'linear-gradient(135deg,#4e1218,#2a0d10)' : 'linear-gradient(135deg,#3b3f52,#272b37)', border:'1px solid rgba(255,255,255,0.18)', display:'inline-flex', gap:'.45rem', alignItems:'center', fontWeight:600, whiteSpace:'nowrap' }}>
+              TARGET: {configuredName}{configuredId !== 1 && <span style={{ color:'var(--warn)', fontWeight:700 }}>Not real ETH</span>}
+            </span>
+            {walletEffectiveId && walletEffectiveId !== configuredId && (
+              <span style={{ fontSize:'.55rem', letterSpacing:'.5px', padding:'.3rem .6rem', borderRadius:'999px', background:'linear-gradient(135deg,#4d2f20,#372016)', border:'1px solid rgba(255,180,60,0.35)', display:'inline-flex', gap:'.35rem', alignItems:'center', fontWeight:600, whiteSpace:'nowrap' }} title={`Wallet network (${walletEffectiveInfo?.name || walletEffectiveId}) differs from target (${configuredName})`}>
+                WALLET: {walletEffectiveInfo?.name || walletEffectiveId}
               </span>
             )}
-          </div>
-          <div style={{ display:'flex', gap:'.75rem', alignItems:'center', marginLeft:'auto', flexWrap:'wrap' }}>
-            <span style={{ fontSize: '.65rem', opacity: .75, whiteSpace:'nowrap' }}>Total: { (total/100).toFixed(2) }% { total !== 10000 && <span className="warn-total">(Mismatch!)</span>}</span>
-            <span style={{ fontSize: '.65rem', opacity: .75, whiteSpace:'nowrap' }}>Pending: { anyLoading ? (
-              <span style={{ display:'inline-block', width:50 }} className="skeleton skeleton-sm" />
-            ) : `${(Number(totalPending)/1e18).toFixed(4)} ETH` }</span>
-            <span style={{ fontSize: '.65rem', opacity: .75, whiteSpace:'nowrap' }}>Withdrawn: { anyLoading ? (
-              <span style={{ display:'inline-block', width:60 }} className="skeleton skeleton-sm" />
-            ) : `${(Number(totalWithdrawn)/1e18).toFixed(4)} ETH` }</span>
-            <span style={{ fontSize: '.65rem', opacity: .75, whiteSpace:'nowrap' }}>Lifetime: { anyLoading ? (
-              <span style={{ display:'inline-block', width:55 }} className="skeleton skeleton-sm" />
-            ) : `${(Number(totalLifetime)/1e18).toFixed(4)} ETH` }</span>
-            <button type="button" className="btn ghost sm" style={{ fontSize:'.55rem', letterSpacing:'.5px' }}
-              onClick={() => {
-                const next = theme === 'dark' ? 'light' : 'dark';
-                setTheme(next); localStorage.setItem('ds_theme', next);
-              }}
+            <button type="button" className="btn ghost sm" style={{ fontSize:'.55rem', letterSpacing:'.5px', marginLeft:'.4rem' }}
+              onClick={() => { const next = theme === 'dark' ? 'light' : 'dark'; setTheme(next); localStorage.setItem('ds_theme', next); }}
             >Theme: {theme === 'dark' ? 'Dark' : 'Light'}</button>
           </div>
         </div>
+        {/* Line 2: Legend + stats + theme (aligned to left, normal card padding) */}
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', width:'100%', fontSize:'.55rem', flexWrap:'wrap', rowGap:'.4rem' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:'1rem', flexWrap:'wrap' }}>
+            <span style={{ display:'inline-flex', alignItems:'center', gap:'.3rem' }}><span style={{ width:14, height:6, background:'linear-gradient(90deg,#2e7dd1,#4aa8ff)', borderRadius:3 }} /> Withdrawn</span>
+            <span style={{ display:'inline-flex', alignItems:'center', gap:'.3rem' }}><span style={{ width:14, height:6, background:'linear-gradient(90deg,#f39c12,#f1c40f)', borderRadius:3 }} /> Pending</span>
+            <span style={{ display:'inline-flex', alignItems:'center', gap:'.3rem' }} title="P=Pending W=Withdrawn L=Lifetime">Abbrev: P / W / L</span>
+          </div>
+          <div style={{ display:'flex', alignItems:'center', gap:'1.1rem', flexWrap:'wrap', justifyContent:'flex-end', fontSize:'.62rem', fontWeight:600, letterSpacing:'.25px' }}>
+            <span style={{ whiteSpace:'nowrap' }}>Total: {(total/100).toFixed(2)}%</span>
+            <span style={{ whiteSpace:'nowrap' }}>Pending: { anyLoading ? (<span style={{ display:'inline-block', width:50 }} className="skeleton skeleton-sm" />) : `${(Number(totalPending)/1e18).toFixed(4)} ETH` }</span>
+            <span style={{ whiteSpace:'nowrap' }}>Withdrawn: { anyLoading ? (<span style={{ display:'inline-block', width:60 }} className="skeleton skeleton-sm" />) : `${(Number(totalWithdrawn)/1e18).toFixed(4)} ETH` }</span>
+            <span style={{ whiteSpace:'nowrap' }}>Lifetime: { anyLoading ? (<span style={{ display:'inline-block', width:55 }} className="skeleton skeleton-sm" />) : `${(Number(totalLifetime)/1e18).toFixed(4)} ETH` }</span>
+          </div>
+        </div>
+        {(import.meta.env?.VITE_DEBUG_NETWORK === '1') && (
+          <div style={{ fontSize:'.55rem', opacity:.7, display:'flex', flexDirection:'column', gap:'.2rem', padding:'.4rem .6rem', background:'rgba(255,255,255,0.07)', border:'1px solid rgba(255,255,255,0.15)', borderRadius:6, maxWidth:240 }}>
+            <div style={{ fontWeight:600 }}>Debug Network</div>
+            <div style={{ display:'flex', justifyContent:'space-between' }}><span>wagmi id</span><span style={{ fontFamily:'monospace' }}>{String(currentChainId ?? 'n/a')}</span></div>
+            <div style={{ display:'flex', justifyContent:'space-between' }}><span>provider id</span><span style={{ fontFamily:'monospace' }}>{String(typeof provChainId !== 'undefined' ? provChainId : 'n/a')}</span></div>
+            <div style={{ display:'flex', justifyContent:'space-between' }}><span>effective id</span><span style={{ fontFamily:'monospace' }}>{String(typeof provChainId !== 'undefined' ? provChainId : (currentChainId ?? 'n/a'))}</span></div>
+            <div style={{ display:'flex', justifyContent:'space-between' }}><span>wallet name</span><span style={{ fontFamily:'monospace' }}>{(provChainId ?? currentChainId) ? (getChainInfo((provChainId ?? currentChainId) || undefined)?.name || 'Unknown') : '—'}</span></div>
+            <div style={{ display:'flex', justifyContent:'space-between' }}><span>target id</span><span style={{ fontFamily:'monospace' }}>{configuredId}</span></div>
+            <div style={{ display:'flex', justifyContent:'space-between' }}><span>target name</span><span style={{ fontFamily:'monospace' }}>{configuredName}</span></div>
+            <div style={{ display:'flex', justifyContent:'space-between' }}><span>mismatch</span><span style={{ fontFamily:'monospace', color: (provChainId ?? currentChainId) && (provChainId ?? currentChainId) !== configuredId ? '#f39c12' : '#4caf50' }}>{(provChainId ?? currentChainId) && (provChainId ?? currentChainId) !== configuredId ? 'yes' : 'no'}</span></div>
+          </div>
+        )}
       </div>
-      {/* Removed redundant network banner (now inline with heading) */}
-      <div style={{ display:'flex', alignItems:'center', gap:'.75rem', flexWrap:'wrap', fontSize:'.55rem', opacity:.75, marginTop:'-.3rem' }}>
-        <span style={{ display:'inline-flex', alignItems:'center', gap:'.3rem' }}><span style={{ width:14, height:6, background:'linear-gradient(90deg,#2e7dd1,#4aa8ff)', borderRadius:3 }} /> Withdrawn</span>
-        <span style={{ display:'inline-flex', alignItems:'center', gap:'.3rem' }}><span style={{ width:14, height:6, background:'linear-gradient(90deg,#f39c12,#f1c40f)', borderRadius:3 }} /> Pending</span>
-        <span style={{ display:'inline-flex', alignItems:'center', gap:'.3rem' }} title="P=Pending W=Withdrawn L=Lifetime">Abbrev: P / W / L</span>
-      </div>
-      <div className="beneficiaries-list">
+      <div className="beneficiaries-list" style={{ marginTop:'.4rem' }}>
         {BENEFICIARIES.map((b, i) => {
           const copied = !!copiedMap[b.address];
           const pct = formatPercent(b.bps);
           const truncated = b.address.slice(0,6) + '...' + b.address.slice(-4);
-          const addrLink = makeAddressLink(chainInfo?.id || dynamicChainId, b.address);
+          const addrLink = makeAddressLink(chainInfo?.id || configuredId, b.address);
           const pendingVal = pendingPerBeneficiary[i];
           const withdrawnVal = withdrawnPerBeneficiary[i];
           const lifetime = (pendingVal || 0n) + (withdrawnVal || 0n);
@@ -394,7 +467,10 @@ function BeneficiariesCard() {
             withdrawnPct = Number((withdrawnVal || 0n) * 10_000n / lifetime) / 100; // two decimals
             pendingPct = 100 - withdrawnPct;
           }
-          const tooltip = `Withdrawn ${withdrawnVal ? (Number(withdrawnVal)/1e18).toFixed(4) : '0.0000'} ETH (${withdrawnPct.toFixed(2)}%)\nPending ${pendingVal ? (Number(pendingVal)/1e18).toFixed(4) : '0.0000'} ETH (${pendingPct.toFixed(2)}%)\nLifetime ${(Number(lifetime)/1e18).toFixed(4)} ETH`;
+          const hasActivity = lifetime > 0n;
+          const tooltip = hasActivity
+            ? `Withdrawn ${withdrawnVal ? (Number(withdrawnVal)/1e18).toFixed(4) : '0.0000'} ETH (${withdrawnPct.toFixed(2)}%)\nPending ${pendingVal ? (Number(pendingVal)/1e18).toFixed(4) : '0.0000'} ETH (${pendingPct.toFixed(2)}%)\nLifetime ${(Number(lifetime)/1e18).toFixed(4)} ETH`
+            : 'No donations yet';
           return (
             <div key={b.address} className="beneficiary-row">
               <div className="beneficiary-icon" aria-hidden>
@@ -428,25 +504,43 @@ function BeneficiariesCard() {
                     onClick={() => { navigator.clipboard.writeText(b.address); triggerCopied(b.address); }}
                     title={copied ? 'Copied!' : `Copy beneficiary address: ${b.address}`}
                     className={`addr-chip ${copied ? 'copied' : ''}`}
+                    aria-live="polite"
                   >
-                    {copied ? <span className="addr-value" style={{ fontWeight:600 }}>Copied!</span> : <>
-                      <span className="addr-label">ADDR</span>
-                      <span className="addr-value">{truncated}</span>
-                    </>}
+                    <span style={{ display:'inline-flex', alignItems:'center', gap:'.35rem', minWidth:'72px', justifyContent:'center' }}>
+                      {copied ? (
+                        <span className="addr-value" style={{ fontWeight:600, display:'inline-flex', alignItems:'center', gap:'.25rem' }}>
+                          <span style={{ fontSize:'.75rem', lineHeight:1, color:'var(--accent-alt)' }}>✔</span>
+                          Copied
+                        </span>
+                      ) : (
+                        <>
+                          <span className="addr-label">ADDR</span>
+                          <span className="addr-value">{truncated}</span>
+                        </>
+                      )}
+                    </span>
                   </button>
                   <a href={addrLink} target="_blank" rel="noopener noreferrer" title={`View address on ${chainInfo?.name || 'Explorer'}`} className="explorer-chip">
                     <span className="ext-arrow" style={{ fontSize:'.7em' }}>↗</span>
                   </a>
                 </div>
                 {b.description && <div className="beneficiary-desc">{b.description}</div>}
-                {/* Stacked bar withdrawn vs pending */}
-                <div style={{ position:'relative', height:'6px', background:'rgba(255,255,255,0.07)', borderRadius:'4px', overflow:'hidden', marginTop:'.35rem', marginBottom:'.35rem' }} title={tooltip}>
-                  <div style={{ position:'absolute', inset:0, display:'flex', width:'100%' }}>
-                    <div style={{ width: (withdrawnPct>0 && withdrawnPct<1 ? 1 : withdrawnPct) + '%', background:'linear-gradient(90deg,#2e7dd1,#4aa8ff)', transition:'width .6s ease' }} />
-                    <div style={{ width: (pendingPct>0 && pendingPct<1 ? 1 : pendingPct) + '%', background:'linear-gradient(90deg,#f39c12,#f1c40f)', transition:'width .6s ease' }} />
-                  </div>
+                {/* Dynamic activity bar: withdrawn (blue) vs pending (yellow). Empty (no color) until first donation */}
+                <div style={{ position:'relative', height:'6px', background:'rgba(255,255,255,0.07)', borderRadius:'4px', overflow:'hidden', marginTop:'.35rem', marginBottom:'.35rem' }} title={tooltip} aria-label={tooltip}>
+                  {hasActivity && (
+                    <div style={{ position:'absolute', inset:0, display:'flex', width:'100%' }}>
+                      <div style={{ width: (withdrawnPct>0 && withdrawnPct<1 ? 1 : withdrawnPct) + '%', background:'linear-gradient(90deg,#2e7dd1,#4aa8ff)', transition:'width .6s ease' }} />
+                      <div style={{ width: (pendingPct>0 && pendingPct<1 ? 1 : pendingPct) + '%', background:'linear-gradient(90deg,#f39c12,#f1c40f)', transition:'width .6s ease' }} />
+                    </div>
+                  )}
+                  {!hasActivity && (
+                    <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'.45rem', letterSpacing:'.3px', fontWeight:500, color:'rgba(255,255,255,0.55)', background:'repeating-linear-gradient(90deg,rgba(255,255,255,0.05) 0 8px, rgba(255,255,255,0.02) 8px 16px)' }}>
+                      No activity
+                    </div>
+                  )}
                 </div>
-                <div className="beneficiary-bar" style={{ width: pct }} />
+                {/* Static configuration bar: beneficiary share (BPS) of the total – does not change unless contract is redeployed/config updated */}
+                <div className="beneficiary-bar" style={{ width: pct }} title={`Configured share: ${pct}`} aria-label={`Configured share: ${pct}`} />
               </div>
               <div className="beneficiary-stats">
                 <span title="Pending not yet withdrawn">
@@ -482,16 +576,18 @@ function BeneficiariesCard() {
           );
         })}
       </div>
-      <div className="beneficiaries-footer">Static configuration (placeholders) – replace with verified addresses before mainnet deployment.</div>
+      {/* Static config note moved to disconnected state card */}
     </div>
   );
 }
 
 // Custom hook using beneficiaryTotals() via batched reads (lifetime + components)
 function useBeneficiaryFinancials() {
-  // Build read contracts for each beneficiary
+  const chainId = useChainId?.();
+  const runtimeAddress = getDonationSplitterAddress(chainId);
+  // Build read contracts for each beneficiary using dynamic address
   const contracts = BENEFICIARIES.map(b => ({
-    address: DONATION_SPLITTER_ADDRESS,
+    address: runtimeAddress,
     abi: DONATION_SPLITTER_ABI,
     functionName: 'beneficiaryTotals',
     args: [b.address] as const

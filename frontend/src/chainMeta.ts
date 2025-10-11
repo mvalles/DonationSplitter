@@ -2,6 +2,14 @@
 export interface ChainInfo { id: number; name: string; explorer: string; explorerTx: string; explorerAddress: string; testnet: boolean; }
 
 export const CHAINS: Record<number, ChainInfo> = {
+  31337: {
+    id: 31337,
+    name: 'Hardhat Local',
+    explorer: '',
+    explorerTx: '',
+    explorerAddress: '',
+    testnet: true, // treat as testnet (not real ETH)
+  },
   11155111: {
     id: 11155111,
     name: 'Sepolia',
