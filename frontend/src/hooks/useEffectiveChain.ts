@@ -10,6 +10,7 @@ export interface EffectiveChainState {
   mismatch: boolean;             // wallet connected & differs from target
   isTarget: boolean;             // effective === target
   ready: boolean;                // provider check attempted
+  providerAvailable: boolean;    // window.ethereum provider detected
 }
 
 /**
@@ -59,6 +60,7 @@ export function useEffectiveChain(): EffectiveChainState {
 
   const effectiveChainId = providerChainId ?? walletChainId;
   const mismatch = !!(isConnected && effectiveChainId !== undefined && effectiveChainId !== TARGET_CHAIN_ID);
+  const providerAvailable = !!((window as unknown as { ethereum?: unknown }).ethereum);
 
   return {
     walletChainId,
@@ -68,5 +70,6 @@ export function useEffectiveChain(): EffectiveChainState {
     mismatch,
     isTarget: effectiveChainId === TARGET_CHAIN_ID,
     ready,
+    providerAvailable,
   };
 }

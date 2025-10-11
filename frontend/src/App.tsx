@@ -262,6 +262,8 @@ function App() {
                     setEthAmount('');
                     bump();
                     if (refetch) refetch();
+                    // Forzar refresh de actividad (dispara CustomEvent que escucha ActivityPanel en próxima iteración si se implementa listener)
+                    try { window.dispatchEvent(new CustomEvent('ds_activity_refresh')); } catch { /* ignore */ }
                     console.log('Donation TX sent:', tx);
                   } catch (err) {
                     const errorMsg = err instanceof Error ? err.message : String(err);
@@ -521,47 +523,93 @@ function App() {
             {(role === 'beneficiary' || (role === 'owner' && isBeneficiary)) && (
               <div data-tab="Withdraw" className="card">
               <h2>Withdrawals</h2>
-              {hasBlockscout(activeChain?.id || TARGET_CHAIN_ID) && (
-                <div className="explorer-bar" style={{ marginBottom:'.55rem' }}>
-                  <span className="label">Explorer</span>
-                  <a href={blockscoutAddressUrl(activeChain?.id || TARGET_CHAIN_ID, runtimeAddress)} target="_blank" rel="noopener noreferrer">Contract ↗</a>
-                  {lastDonateTx && <TxHashChip label="Donate" hash={lastDonateTx!} url={blockscoutTxUrl(activeChain?.id || TARGET_CHAIN_ID, lastDonateTx!) || '#'} />}
-                  {lastWithdrawTx && <TxHashChip label="Withdraw" hash={lastWithdrawTx!} url={blockscoutTxUrl(activeChain?.id || TARGET_CHAIN_ID, lastWithdrawTx!) || '#'} />}
-                </div>
-              )}
-              <p className="muted">Contract balance: <strong>{contractBalance ? (Number(contractBalance.value)/1e18).toFixed(4) : (<span style={{ display: 'inline-block', width: 80 }} className="skeleton skeleton-sm" />)}{contractBalance && ' ETH'}</strong></p>
+
+              {/* Pending Balance & Withdraw Action */}
               {(() => {
                 const pending = pendingEth as bigint | undefined;
                 return isConnected && pending !== undefined && pending > 0n;
               })() ? (
-                <div className="pending-box">
-                  <p>Pending balance: <strong>{pendingEth ? ((Number(pendingEth as bigint))/1e18).toFixed(4) + ' ETH' : (<span style={{ display: 'inline-block', width: 70 }} className="skeleton skeleton-sm" />)}</strong></p>
-                  <button className="btn secondary"
-                    onClick={async () => {
-                      setWithdrawError(null);
-                      try {
-                        const tx = await withdrawETH();
-                        setLastWithdrawTx(tx);
-                        bump();
-                        if (refetch) refetch();
-                        console.log('Withdraw TX:', tx);
-                      } catch (err) {
-                        const errorMsg = err instanceof Error ? err.message : String(err);
-                        setWithdrawError(errorMsg);
-                        console.error('Withdraw error:', err);
-                      }
-                    }}
-                    disabled={isWithdrawing}
-                  >
-                    {isWithdrawing ? 'Withdrawing...' : 'Withdraw'}
-                  </button>
-                  {withdrawError && <p className="alert">Withdraw error: {withdrawError}</p>}
+                <div style={{ 
+                  background: 'linear-gradient(145deg, rgba(46,125,209,0.15), rgba(74,168,255,0.08))', 
+                  border: '1px solid rgba(74,168,255,0.25)', 
+                  borderRadius: 12, 
+                  padding: '1rem', 
+                  marginBottom: '.75rem' 
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '.75rem' }}>
+                    <div>
+                      <div style={{ fontSize: '.68rem', fontWeight: 600, marginBottom: '.25rem', color: 'rgba(255,255,255,0.9)' }}>
+                        Available to Withdraw
+                      </div>
+                      <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '1.1rem', fontWeight: 700, color: '#fff' }}>
+                        {pendingEth ? ((Number(pendingEth as bigint))/1e18).toFixed(4) + ' ETH' : (<span style={{ display: 'inline-block', width: 70 }} className="skeleton skeleton-sm" />)}
+                      </div>
+                    </div>
+                    <button 
+                      className="btn"
+                      style={{ 
+                        padding: '.65rem 1.25rem', 
+                        fontSize: '.75rem', 
+                        fontWeight: 600,
+                        minWidth: '100px'
+                      }}
+                      onClick={async () => {
+                        setWithdrawError(null);
+                        try {
+                          const tx = await withdrawETH();
+                          setLastWithdrawTx(tx);
+                          bump();
+                          if (refetch) refetch();
+                          console.log('Withdraw TX:', tx);
+                        } catch (err) {
+                          const errorMsg = err instanceof Error ? err.message : String(err);
+                          setWithdrawError(errorMsg);
+                          console.error('Withdraw error:', err);
+                        }
+                      }}
+                      disabled={isWithdrawing}
+                    >
+                      {isWithdrawing ? 'Withdrawing...' : 'Withdraw'}
+                    </button>
+                  </div>
+                  
+                  {/* Transaction Links */}
+                  {lastWithdrawTx && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '.5rem', paddingTop: '.5rem', borderTop: '1px solid rgba(255,255,255,0.15)' }}>
+                      <span style={{ fontSize: '.55rem', color: 'rgba(255,255,255,0.7)' }}>Last withdrawal:</span>
+                      <TxHashChip 
+                        label="TX" 
+                        hash={lastWithdrawTx} 
+                        url={blockscoutTxUrl(activeChain?.id || TARGET_CHAIN_ID, lastWithdrawTx) || '#'} 
+                      />
+                    </div>
+                  )}
                 </div>
               ) : (
-                <p className="muted">No pending balance to withdraw.</p>
+                <div style={{ 
+                  background: 'rgba(255,255,255,0.03)', 
+                  border: '1px solid rgba(255,255,255,0.08)', 
+                  borderRadius: 12, 
+                  padding: '1rem', 
+                  textAlign: 'center',
+                  marginBottom: '.75rem'
+                }}>
+                  <div style={{ fontSize: '.72rem', color: 'rgba(255,255,255,0.6)', marginBottom: '.5rem' }}>
+                    💰 No pending balance to withdraw
+                  </div>
+                  <div style={{ fontSize: '.58rem', color: 'rgba(255,255,255,0.4)' }}>
+                    Your share will appear here when donations are received
+                  </div>
+                </div>
               )}
+              
+              {withdrawError && <div className="alert" style={{ marginTop: '.5rem' }}>Withdraw error: {withdrawError}</div>}
               </div>
             )}
+            {/* Activity Panel (visible siempre en modo lectura) */}
+            <div data-tab="Activity" className="card">
+              <ActivityPanel chainId={TARGET_CHAIN_ID} />
+            </div>
           </TabbedPanels>
         )}
         {howOpen && (
@@ -947,4 +995,189 @@ function TabbedPanels({ children, actionsRight }: TabbedPanelsProps) {
       </div>
     </div>
   );
+}
+
+// Activity Panel
+import { useDonationActivity } from './useDonationActivity';
+
+interface ActivityPanelProps { chainId: number }
+function ActivityPanel({ chainId }: ActivityPanelProps) {
+  const [typeFilter, setTypeFilter] = useState<'all'|'donate'|'withdraw'>('all');
+  const [limit, setLimit] = useState(25);
+  const [fullHistoryProgress, setFullHistoryProgress] = useState<{windows:number; running:boolean}>({ windows:0, running:false });
+  const [toast, setToast] = useState<string | null>(null);
+  const cancelFullHistoryRef = React.useRef(false);
+  const { items, total, loading, manualLoading, error, refetch, fetchFullHistory, hasMore } = useDonationActivity({ limit, chainId });
+  const filtered = items.filter(i => typeFilter==='all' || i.type === typeFilter);
+  function exportCsv() {
+    const header = 'type,txHash,address,amountEth,timestamp\n';
+    const rows = filtered.map(i => [i.type, i.txHash, i.address, i.amountEth.toFixed(6), i.timestamp ? new Date(i.timestamp*1000).toISOString() : ''].join(','));
+    const csv = header + rows.join('\n');
+    const blob = new Blob([csv], { type:'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `activity_${chainId}_${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:'0.9rem' }}>
+      <div className="card-header-row" style={{ alignItems:'flex-start' }}>
+        <h2 style={{ margin:0 }}>Activity</h2>
+        <div className="activity-filters">
+          <div className="segmented">{/* Tipo */}
+            {(['all','donate','withdraw'] as const).map(t => (
+              <button key={t} type="button" className={t===typeFilter? 'active':''} onClick={()=>setTypeFilter(t)} title={t==='all'?'Mostrar todo': t==='donate'?'Solo donaciones':'Solo retiros'}>
+                {t==='all'?'All': t==='donate'?'Donations':'Withdrawals'}
+              </button>
+            ))}
+          </div>
+          <div className="segmented sm">{/* Límite */}
+            {[10,25,50].map(n => (
+              <button key={n} type="button" className={n===limit?'active':''} onClick={()=>setLimit(n)} title={`Mostrar hasta ${n}`}>{n}</button>
+            ))}
+          </div>
+          <div className="spacer" />
+            <button type="button" className="btn ghost sm" onClick={()=>refetch()} disabled={manualLoading} title="Manual refresh">{manualLoading ? 'Refreshing…' : 'Refresh'}</button>
+            {hasMore && (
+              <button
+                type="button"
+                className="btn ghost sm"
+                onClick={async ()=> {
+                  if (!fullHistoryProgress.running) {
+                    // iniciar
+                    cancelFullHistoryRef.current = false;
+                    setFullHistoryProgress({ windows:0, running:true });
+                    const before = total;
+                    let cumulativeAdded = 0; let windows = 0;
+                    while (!cancelFullHistoryRef.current) {
+                      const added = await fetchFullHistory(); // ahora fetchFullHistory hace múltiples ventanas internas
+                      if (!added) break;
+                      cumulativeAdded += added;
+                      windows++;
+                      setFullHistoryProgress({ windows, running:true });
+                      // fetchFullHistory ya recorre varias ventanas; si hasMore se vuelve false, paramos
+                      if (!hasMore) break;
+                    }
+                    const after = before + cumulativeAdded;
+                    if (cumulativeAdded > 0) setLimit(() => Math.min(after, 300));
+                    setFullHistoryProgress(p => ({ ...p, running:false }));
+                    setToast(`History fully loaded (${after} events)`);
+                    setTimeout(()=> setToast(null), 6000);
+                  } else {
+                    // cancelar
+                    cancelFullHistoryRef.current = true;
+                    setFullHistoryProgress(p => ({ ...p, running:false }));
+                  }
+                }}
+                disabled={manualLoading}
+                title={fullHistoryProgress.running ? 'Cancel full history loading' : 'Fetch ALL remaining historical events'}
+              >{fullHistoryProgress.running ? 'Cancel Full History' : 'Full History'}</button>
+            )}
+            <button type="button" className="btn ghost sm" onClick={exportCsv} disabled={!filtered.length} title="Export CSV">CSV</button>
+            <span style={{ fontSize:'.5rem', opacity:.5, letterSpacing:'.5px' }}>{filtered.length}/{total}</span>
+        </div>
+      </div>
+      {fullHistoryProgress.running && (
+        <div style={{ fontSize:'.55rem', opacity:.7 }}>Loading full history… windows {fullHistoryProgress.windows}</div>
+      )}
+      {toast && (
+        <div style={{ position:'relative' }}>
+          <div style={{ position:'absolute', right:0, top:0, background:'rgba(0,0,0,0.75)', padding:'.5rem .75rem', borderRadius:8, fontSize:'.55rem', letterSpacing:'.3px' }}>{toast}</div>
+        </div>
+      )}
+      {error && <div className="alert">Error: {error}</div>}
+      <div style={{ display:'grid', gap:'.4rem' }}>
+        {!filtered.length && !loading && <div style={{ fontSize:'.65rem', opacity:.7 }}>No activity yet.</div>}
+        {filtered.map(ev => {
+          const rel = ev.timestamp ? timeAgo(ev.timestamp*1000) : '—';
+          const explorer = blockscoutTxUrl(chainId, ev.txHash);
+          const addrExplorer = blockscoutAddressUrl(chainId, ev.address);
+          const roleLabel = ev.type === 'donate' ? 'DONOR' : 'BENEFICIARY';
+          return (
+            <div
+              key={ev.id}
+              style={{
+                display:'flex',
+                alignItems:'center',
+                background:'rgba(255,255,255,0.05)',
+                border:'1px solid rgba(255,255,255,0.12)',
+                padding:'.55rem .7rem',
+                borderRadius:8,
+                gap:'.7rem',
+                flexWrap:'wrap'
+              }}
+            >
+              <span
+                style={{
+                  fontSize:'.55rem',
+                  fontWeight:600,
+                  letterSpacing:'.5px',
+                  padding:'.3rem .55rem',
+                  borderRadius:6,
+                  background: ev.type==='donate' ? 'linear-gradient(90deg,#2e7dd1,#4aa8ff)' : 'linear-gradient(90deg,#f39c12,#f1c40f)',
+                  color:'#fff',
+                  width:'82px', // ancho fijo para ambos labels
+                  textAlign:'center'
+                }}
+              >{ev.type === 'donate' ? 'DONATE' : 'WITHDRAW'}</span>
+              <span style={{ fontSize:'.55rem', fontFamily:'JetBrains Mono, monospace' }}>{ev.amountEth.toFixed(6)} ETH</span>
+              <span style={{ fontSize:'.5rem', opacity:.7 }}>{rel}</span>
+              <div style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:'.45rem', flexWrap:'wrap' }}>
+                <a
+                  href={addrExplorer || '#'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={`${roleLabel}: ${ev.address}`}
+                  style={{
+                    display:'flex',
+                    alignItems:'center',
+                    gap:'.3rem',
+                    fontSize:'.48rem',
+                    textDecoration:'none',
+                    background:'rgba(255,255,255,0.08)',
+                    padding:'.28rem .5rem',
+                    borderRadius:6,
+                    fontFamily:'JetBrains Mono, monospace',
+                    letterSpacing:'.3px'
+                  }}
+                ><span style={{ opacity:.6 }}>{roleLabel}</span><span>{ev.address.slice(0,6)}…{ev.address.slice(-4)}</span></a>
+                <a
+                  href={explorer || '#'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={`TX: ${ev.txHash}`}
+                  style={{
+                    display:'flex', alignItems:'center', gap:'.3rem', fontSize:'.48rem', textDecoration:'none', background:'rgba(255,255,255,0.08)', padding:'.28rem .5rem', borderRadius:6, fontFamily:'JetBrains Mono, monospace', letterSpacing:'.3px'
+                  }}
+                ><span style={{ opacity:.6 }}>TX</span><span>{ev.txHash.slice(0,10)}…</span></a>
+                <div
+                  title={`Block ${ev.blockNumber.toString()}${ev.timestamp ? ' · ' + new Date(ev.timestamp*1000).toISOString() : ''}`}
+                  style={{
+                    display:'flex', alignItems:'center', gap:'.3rem', fontSize:'.48rem', background:'rgba(255,255,255,0.05)', padding:'.28rem .5rem', borderRadius:6, letterSpacing:'.5px', opacity:.7
+                  }}
+                ><span style={{ opacity:.6 }}>BLK</span><span>#{ev.blockNumber.toString()}</span></div>
+              </div>
+            </div>
+          );
+        })}
+  {manualLoading && <div style={{ fontSize:'.6rem', opacity:.6 }}>Loading…</div>}
+        {!manualLoading && !hasMore && total > items.length && (
+          <button type="button" className="btn ghost sm" onClick={()=>setLimit(prev=> Math.min(prev + 25, total))} style={{ width:'fit-content', marginTop:'.4rem' }} title="Mostrar más en pantalla (ya no hay más bloques antiguos)">
+            Show more
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function timeAgo(tsMs: number) {
+  const diff = Date.now() - tsMs;
+  const s = Math.floor(diff/1000);
+  if (s < 60) return s + 's ago';
+  const m = Math.floor(s/60); if (m < 60) return m + 'm ago';
+  const h = Math.floor(m/60); if (h < 24) return h + 'h ago';
+  const d = Math.floor(h/24); return d + 'd ago';
 }

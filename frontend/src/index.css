@@ -262,6 +262,20 @@ footer.app-footer { margin-top: 2rem; text-align:center; font-size:.65rem; opaci
 
 @keyframes fadeIn { from { opacity:0; transform: translateY(6px); } to { opacity:1; transform: translateY(0); } }
 
+/* === Segmented controls (pills) para Activity === */
+.segmented { display:inline-flex; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); padding:3px; border-radius: 999px; gap:3px; backdrop-filter: blur(8px); }
+.segmented.sm { padding:2px; gap:2px; }
+.segmented button { background:transparent; border:0; color:var(--text-secondary); font-size:.55rem; letter-spacing:.5px; font-weight:600; padding:.32rem .75rem .30rem; border-radius:999px; line-height:1; position:relative; transition: background var(--transition), color var(--transition), box-shadow var(--transition); }
+.segmented button:hover { color:#fff; }
+.segmented button.active { background:linear-gradient(135deg,#3a3750,#262537); color:#fff; box-shadow:0 0 0 1px rgba(180,160,255,0.35), 0 4px 10px -3px rgba(0,0,0,0.55); }
+.segmented button:focus-visible { outline:0; box-shadow:0 0 0 2px var(--accent-alt); }
+.segmented button:active { transform:translateY(1px); }
+
+.activity-filters { display:flex; flex-wrap:wrap; align-items:center; gap:.55rem; }
+.activity-filters .divider-dot { font-size:.55rem; opacity:.4; }
+.activity-filters .label { font-size:.5rem; opacity:.55; font-weight:600; letter-spacing:.5px; text-transform:uppercase; }
+.activity-filters .spacer { width:1px; height:16px; background:linear-gradient(180deg,rgba(255,255,255,0.15),rgba(255,255,255,0.05)); border-radius:1px; }
+
 /* Scrollbar subtle (webkit) */
 ::-webkit-scrollbar { width:10px; }
 ::-webkit-scrollbar-track { background: transparent; }
