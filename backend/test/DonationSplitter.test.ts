@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { network } from "hardhat";
 
-// Tests para DonationSplitter usando viem y node:test
+// Tests for DonationSplitter using viem and node:test
 
 describe("DonationSplitter", async function () {
   const { viem } = await network.connect();

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-/// @title DonationSplitter - Trazabilidad de donaciones en ETH con reparto transparente
-/// @notice Acepta ETH y reparte por porcentajes (BPS) entre beneficiarios.
-///         Los fondos quedan "pendientes" y cada beneficiario los retira (pull pattern) para mayor seguridad.
+/// @title DonationSplitter - Transparent ETH donation splitting with traceability
+/// @notice Accepts ETH and allocates it across beneficiaries using BPS (basis points) weights.
+///         Funds become "pending" and each beneficiary withdraws them (pull pattern) for added security.
 contract DonationSplitter {
     struct Beneficiary {
         address account;
@@ -13,8 +13,10 @@ contract DonationSplitter {
     address public owner;
     Beneficiary[] private _beneficiaries;
 
-    // ETH pendiente por beneficiario
+    // Pending ETH per beneficiary (not yet withdrawn)
     mapping(address => uint256) public pendingEth;
+    // Total historical withdrawn ETH per beneficiary
+    mapping(address => uint256) public withdrawnEth;
 
     event DonationRecorded(address indexed donor, uint256 amount, uint256 timestamp);
     event BeneficiariesUpdated(uint256 count, uint256 totalBps);
@@ -34,27 +36,35 @@ contract DonationSplitter {
         _setBeneficiaries(initialBeneficiaries);
     }
 
-    // --- Donaciones ---
+    // --- Donations ---
 
-    /// @notice Donar ETH (reparte en pendientes por BPS).
+    /// @notice Donate ETH (distributes into pending balances according to BPS)
     function donateETH() public payable {
         require(msg.value > 0, "No ETH sent");
         _splitEth(msg.value);
         emit DonationRecorded(msg.sender, msg.value, block.timestamp);
     }
 
-    // --- Retiros ---
+    // --- Withdrawals ---
 
     function withdrawETH() external {
         uint256 amount = pendingEth[msg.sender];
         if (amount == 0) revert NothingToWithdraw();
         pendingEth[msg.sender] = 0; // effects
+    withdrawnEth[msg.sender] += amount; // track historical withdrawal
         (bool ok, ) = payable(msg.sender).call{value: amount}(""); // interaction
         require(ok, "ETH transfer failed");
         emit Withdrawn(msg.sender, amount);
     }
 
-    // --- Gestión de beneficiarios ---
+    /// @notice Returns (pending, withdrawn, lifetime total) for a beneficiary
+    function beneficiaryTotals(address account) external view returns (uint256 pending, uint256 withdrawn, uint256 lifetime) {
+        pending = pendingEth[account];
+        withdrawn = withdrawnEth[account];
+        lifetime = pending + withdrawn;
+    }
+
+    // --- Beneficiary management ---
 
     function setBeneficiaries(Beneficiary[] memory newBeneficiaries) external onlyOwner {
         _setBeneficiaries(newBeneficiaries);
@@ -69,7 +79,7 @@ contract DonationSplitter {
         }
     }
 
-    // --- Internos ---
+    // --- Internals ---
 
     function _splitEth(uint256 amount) internal {
         require(_beneficiaries.length > 0, "No beneficiaries");
@@ -80,7 +90,7 @@ contract DonationSplitter {
             Beneficiary memory b = _beneficiaries[i];
             uint256 share = (amount * b.bps) / totalBps;
             if (i == _beneficiaries.length - 1) {
-                share = remaining; // agrega residuo al último
+                share = remaining; // add remainder to the last beneficiary to avoid dust
             }
             pendingEth[b.account] += share;
             remaining -= share;
@@ -110,7 +120,7 @@ contract DonationSplitter {
         return total;
     }
 
-    // recibir ETH directo (cuenta como donación)
+    // Receive plain ETH directly (counts as a donation)
     receive() external payable {
         donateETH();
     }
