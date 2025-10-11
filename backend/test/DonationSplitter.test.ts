@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { network } from "hardhat";
 
-// Tests for DonationSplitter using viem and node:test
+// Tests para DonationSplitter usando viem y node:test
 
 describe("DonationSplitter", async function () {
   const { viem } = await network.connect();
@@ -21,6 +21,9 @@ describe("DonationSplitter", async function () {
     await splitter.write.donateETH({ value: 10n ** 18n });
     assert.equal(await splitter.read.pendingEth([alice.account.address]), 600000000000000000n);
     assert.equal(await splitter.read.pendingEth([bob.account.address]), 400000000000000000n);
+    // Antes de retirar withdrawnEth debe ser 0
+    const beforeWithdrawnAlice = await splitter.read.withdrawnEth([alice.account.address]);
+    assert.equal(beforeWithdrawnAlice, 0n);
 
     // Alice withdraws
     const aliceBalanceBefore = await publicClient.getBalance({ address: alice.account.address });
@@ -28,6 +31,9 @@ describe("DonationSplitter", async function () {
     const aliceBalanceAfter = await publicClient.getBalance({ address: alice.account.address });
     assert(aliceBalanceAfter - aliceBalanceBefore >= 590000000000000000n, "Alice should receive ~0.6 ETH");
     assert.equal(await splitter.read.pendingEth([alice.account.address]), 0n);
+    // withdrawnEth actualizado
+    const withdrawnAlice = await splitter.read.withdrawnEth([alice.account.address]);
+    assert(withdrawnAlice >= 590000000000000000n);
 
     // Bob withdraws
     const bobBalanceBefore = await publicClient.getBalance({ address: bob.account.address });
@@ -35,6 +41,8 @@ describe("DonationSplitter", async function () {
     const bobBalanceAfter = await publicClient.getBalance({ address: bob.account.address });
     assert(bobBalanceAfter - bobBalanceBefore >= 390000000000000000n, "Bob should receive ~0.4 ETH");
     assert.equal(await splitter.read.pendingEth([bob.account.address]), 0n);
+    const withdrawnBob = await splitter.read.withdrawnEth([bob.account.address]);
+    assert(withdrawnBob >= 390000000000000000n);
   });
 
   it("Should only allow owner to set beneficiaries", async function () {
@@ -69,5 +77,26 @@ describe("DonationSplitter", async function () {
     await owner.sendTransaction({ to: splitter.address, value: 2n * 10n ** 18n });
     assert.equal(await splitter.read.pendingEth([alice.account.address]), 1200000000000000000n);
     assert.equal(await splitter.read.pendingEth([bob.account.address]), 800000000000000000n);
+  });
+
+  it("Should accumulate withdrawnEth after multiple donations + withdrawals", async function () {
+    const splitter = await deploySplitter();
+    // Primera donación
+    await splitter.write.donateETH({ value: 1n * 10n ** 18n });
+    // Segunda donación
+    await splitter.write.donateETH({ value: 2n * 10n ** 18n });
+    // Pendiente Alice: 0.6 + 1.2 = 1.8 ETH
+    assert.equal(await splitter.read.pendingEth([alice.account.address]), 1800000000000000000n);
+    // Alice retira parcial: simulamos retirando todo (no hay parcial en el contrato)
+    await splitter.write.withdrawETH({ account: alice.account });
+    const withdrawnA1 = await splitter.read.withdrawnEth([alice.account.address]);
+    assert(withdrawnA1 >= 1790000000000000000n);
+    // Nueva donación
+    await splitter.write.donateETH({ value: 1n * 10n ** 18n });
+    // Pendiente Alice ahora 0.6 ETH otra vez
+    assert.equal(await splitter.read.pendingEth([alice.account.address]), 600000000000000000n);
+    await splitter.write.withdrawETH({ account: alice.account });
+    const withdrawnA2 = await splitter.read.withdrawnEth([alice.account.address]);
+    assert(withdrawnA2 > withdrawnA1);
   });
 });

@@ -59,4 +59,51 @@ contract DonationSplitterTest is Test {
         assertEq(splitter.pendingEth(alice), 1.2 ether);
         assertEq(splitter.pendingEth(bob), 0.8 ether);
     }
+
+    function testWithdrawnEthAndTotals() public {
+        vm.deal(address(this), 1 ether);
+        splitter.donateETH{value: 1 ether}();
+        // Antes de retirar
+        (uint256 pendingA, uint256 withdrawnA, uint256 lifetimeA) = splitter.beneficiaryTotals(alice);
+        assertEq(pendingA, 0.6 ether);
+        assertEq(withdrawnA, 0);
+        assertEq(lifetimeA, 0.6 ether);
+        // Retira Alice
+        vm.prank(alice);
+        splitter.withdrawETH();
+        // pending=0, withdrawn=0.6, lifetime=0.6
+        (pendingA, withdrawnA, lifetimeA) = splitter.beneficiaryTotals(alice);
+        assertEq(pendingA, 0);
+        assertEq(withdrawnA, 0.6 ether);
+        assertEq(lifetimeA, 0.6 ether);
+    }
+
+    function testWithdrawEvent() public {
+        vm.deal(address(this), 1 ether);
+        splitter.donateETH{value: 1 ether}();
+        vm.prank(alice);
+        vm.expectEmit(true, false, false, true);
+        emit DonationSplitter.Withdrawn(alice, 0.6 ether);
+        splitter.withdrawETH();
+    }
+
+    function testRoundingResidualGoesToLast() public {
+        // Configurar 3 beneficiarios con proporciones que generen residuo al dividir
+        DonationSplitter.Beneficiary[] memory arr = new DonationSplitter.Beneficiary[](3);
+        arr[0] = DonationSplitter.Beneficiary(alice, 3333); // 33.33%
+        arr[1] = DonationSplitter.Beneficiary(bob, 3333);   // 33.33%
+        address carol = address(0x4);
+        arr[2] = DonationSplitter.Beneficiary(carol, 3334); // 33.34% (suma = 10000)
+        vm.prank(owner);
+        splitter.setBeneficiaries(arr);
+        vm.deal(address(this), 1 wei * 1000); // 1000 wei para evidenciar residuo
+        splitter.donateETH{value: 1000}();
+        // Calculos teóricos:
+        // share0 = floor(1000 * 3333 / 10000) = 333
+        // share1 = floor(1000 * 3333 / 10000) = 333
+        // share2 = restante = 334 (debe absorber residuo)
+        assertEq(splitter.pendingEth(alice), 333);
+        assertEq(splitter.pendingEth(bob), 333);
+        assertEq(splitter.pendingEth(carol), 334);
+    }
 }
