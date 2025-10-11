@@ -583,14 +583,16 @@ function BeneficiariesCard() {
 
 // Custom hook using beneficiaryTotals() via batched reads (lifetime + components)
 function useBeneficiaryFinancials() {
-  const chainId = useChainId?.();
-  const runtimeAddress = getDonationSplitterAddress(chainId);
-  // Build read contracts for each beneficiary using dynamic address
+  // Always anchor reads to the configured TARGET chain (dashboard invariant),
+  // independent of the wallet network to avoid state flicker / zeroing when user switches chains.
+  const runtimeAddress = getDonationSplitterAddress(CONFIG_TARGET_CHAIN_ID);
+  // Build read contracts for each beneficiary using the fixed dashboard target chain.
   const contracts = BENEFICIARIES.map(b => ({
     address: runtimeAddress,
     abi: DONATION_SPLITTER_ABI,
     functionName: 'beneficiaryTotals',
-    args: [b.address] as const
+    args: [b.address] as const,
+    chainId: CONFIG_TARGET_CHAIN_ID,
   }));
   const { data, isLoading } = useReadContracts({
     // cast because our const ABI satisfies viem Abi type
