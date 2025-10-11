@@ -1,0 +1,22 @@
+[
+  {
+    "address": "0xcb9CB1159999fBd1cf0AC07c7eE6de8A148A2D8d",
+    "bps": 2500,
+    "label": "Sepolia A"
+  },
+  {
+    "address": "0x7777777777777777777777777777777777777777",
+    "bps": 2500,
+    "label": "Sepolia B"
+  },
+  {
+    "address": "0x8888888888888888888888888888888888888888",
+    "bps": 2500,
+    "label": "Sepolia C"
+  },
+  {
+    "address": "0x9999999999999999999999999999999999999999",
+    "bps": 2500,
+    "label": "Sepolia D"
+  }
+]
