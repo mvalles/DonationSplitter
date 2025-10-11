@@ -7,8 +7,9 @@ import { useDonateETH, useWithdrawETH } from './contractWriteHooks';
 import { useRefetchKey } from './RefetchContext';
 import { metaMask } from 'wagmi/connectors';
 import { DONATION_SPLITTER_ABI, type DonationSplitterAbi, getDonationSplitterAddress, TARGET_CHAIN_ID as CONFIG_TARGET_CHAIN_ID, TARGET_CHAIN_LABEL } from './contractInfo';
+import { useEffectiveChain } from './hooks/useEffectiveChain';
 import DonationSplitArt from './DonationSplitArt';
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { BENEFICIARIES, beneficiariesTotalBps, formatPercent } from './beneficiaries';
 import { getChainInfo, makeAddressLink } from './chainMeta';
 import { OrgLogo } from './orgLogos';
@@ -35,28 +36,8 @@ function App() {
     // Determine active chain early (needed for mismatch gating)
     const activeChain = chains.find(c => c.id === chainId);
     const isMainnet = activeChain?.id === 1;
-    // Additional provider-based detection (covers cases where wagmi chainId not refreshed)
-    const [providerChainId, setProviderChainId] = useState<number|undefined>(undefined);
-    // Initialize provider chain id and subscribe to changes
-    React.useEffect(() => {
-      const win = window as unknown as { ethereum?: { request: (args:{method:string})=>Promise<string>; on?: (ev:string, cb:(p:string)=>void)=>void; removeListener?: (ev:string, cb:(p:string)=>void)=>void } };
-      if (!win.ethereum) return;
-      let mounted = true;
-      win.ethereum.request({ method: 'eth_chainId' }).then((cid: string) => {
-        if (!mounted) return;
-        const parsed = Number(cid);
-        if (!isNaN(parsed)) setProviderChainId(parsed);
-      }).catch(()=>{});
-      const handler = (cid: string) => {
-        if (!mounted) return;
-        const parsed = Number(cid);
-        if (!isNaN(parsed)) setProviderChainId(parsed);
-      };
-      win.ethereum.on?.('chainChanged', handler);
-      return () => { mounted = false; win.ethereum?.removeListener?.('chainChanged', handler); };
-    }, []);
-  const effectiveChainId = providerChainId ?? chainId; // prefer provider direct reading
-  const mismatch = isConnected && effectiveChainId !== undefined && effectiveChainId !== TARGET_CHAIN_ID; // mismatch only matters once wallet is connected
+  // Unified chain / mismatch state via shared hook (removes duplicated provider listener logic)
+  const { mismatch } = useEffectiveChain();
     const { data: pendingEth, refetch } = useReadContract({
       address: runtimeAddress,
       abi: DONATION_SPLITTER_ABI,
@@ -363,23 +344,10 @@ function HowItWorks() {
 // Beneficiaries list card
 function BeneficiariesCard() {
   const total = beneficiariesTotalBps();
-  // Dynamic chain id; do not force Sepolia if unknown so we don't mislabel local networks
-  const currentChainId = useChainId?.();
-  const chainInfo = currentChainId ? getChainInfo(currentChainId) : undefined; // wagmi notion
-  // Local provider chain detection (independent of wagmi hook) to reflect real wallet even if hook stale
-  const [provChainId, setProvChainId] = useState<number|undefined>();
-  // Effective wallet network (provider preferred to avoid stale wagmi)
-  const walletEffectiveId = typeof provChainId !== 'undefined' ? provChainId : currentChainId;
-  const walletEffectiveInfo = walletEffectiveId ? getChainInfo(walletEffectiveId) : undefined;
-  React.useEffect(() => {
-    const win = window as unknown as { ethereum?: { request: (args:{method:string})=>Promise<string>; on?: (ev:string, cb:(p:string)=>void)=>void; removeListener?: (ev:string, cb:(p:string)=>void)=>void } };
-    if (!win.ethereum) return;
-    let mounted = true;
-    win.ethereum.request({ method:'eth_chainId' }).then(cid => { if (!mounted) return; const n=Number(cid); if(!isNaN(n)) setProvChainId(n); }).catch(()=>{});
-    const handler = (cid:string) => { if (!mounted) return; const n=Number(cid); if(!isNaN(n)) setProvChainId(n); };
-    win.ethereum.on?.('chainChanged', handler);
-    return () => { mounted=false; win.ethereum?.removeListener?.('chainChanged', handler); };
-  }, []);
+  // Use shared effective chain hook (eliminates duplicated provider chain listener logic)
+  const { walletChainId, providerChainId, effectiveChainId } = useEffectiveChain();
+  const chainInfo = walletChainId ? getChainInfo(walletChainId) : undefined;
+  const walletEffectiveInfo = effectiveChainId ? getChainInfo(effectiveChainId) : undefined;
   const { pendingPerBeneficiary, withdrawnPerBeneficiary, anyLoading, totalPending, totalWithdrawn } = useBeneficiaryFinancials();
   const totalLifetime = totalPending + totalWithdrawn;
   const [theme, setTheme] = useState<'dark'|'light'>(() => (localStorage.getItem('ds_theme') as 'dark'|'light') || 'dark');
@@ -415,9 +383,9 @@ function BeneficiariesCard() {
             <span style={{ fontSize:'.6rem', letterSpacing:'.5px', padding:'.35rem .65rem', borderRadius:'999px', background: configuredId === 1 ? 'linear-gradient(135deg,#4e1218,#2a0d10)' : 'linear-gradient(135deg,#3b3f52,#272b37)', border:'1px solid rgba(255,255,255,0.18)', display:'inline-flex', gap:'.45rem', alignItems:'center', fontWeight:600, whiteSpace:'nowrap' }}>
               TARGET: {configuredName}{configuredId !== 1 && <span style={{ color:'var(--warn)', fontWeight:700 }}>Not real ETH</span>}
             </span>
-            {walletEffectiveId && walletEffectiveId !== configuredId && (
-              <span style={{ fontSize:'.55rem', letterSpacing:'.5px', padding:'.3rem .6rem', borderRadius:'999px', background:'linear-gradient(135deg,#4d2f20,#372016)', border:'1px solid rgba(255,180,60,0.35)', display:'inline-flex', gap:'.35rem', alignItems:'center', fontWeight:600, whiteSpace:'nowrap' }} title={`Wallet network (${walletEffectiveInfo?.name || walletEffectiveId}) differs from target (${configuredName})`}>
-                WALLET: {walletEffectiveInfo?.name || walletEffectiveId}
+            {effectiveChainId && effectiveChainId !== configuredId && (
+              <span style={{ fontSize:'.55rem', letterSpacing:'.5px', padding:'.3rem .6rem', borderRadius:'999px', background:'linear-gradient(135deg,#4d2f20,#372016)', border:'1px solid rgba(255,180,60,0.35)', display:'inline-flex', gap:'.35rem', alignItems:'center', fontWeight:600, whiteSpace:'nowrap' }} title={`Wallet network (${walletEffectiveInfo?.name || effectiveChainId}) differs from target (${configuredName})`}>
+                WALLET: {walletEffectiveInfo?.name || effectiveChainId}
               </span>
             )}
             <button type="button" className="btn ghost sm" style={{ fontSize:'.55rem', letterSpacing:'.5px', marginLeft:'.4rem' }}
@@ -442,13 +410,13 @@ function BeneficiariesCard() {
         {(import.meta.env?.VITE_DEBUG_NETWORK === '1') && (
           <div style={{ fontSize:'.55rem', opacity:.7, display:'flex', flexDirection:'column', gap:'.2rem', padding:'.4rem .6rem', background:'rgba(255,255,255,0.07)', border:'1px solid rgba(255,255,255,0.15)', borderRadius:6, maxWidth:240 }}>
             <div style={{ fontWeight:600 }}>Debug Network</div>
-            <div style={{ display:'flex', justifyContent:'space-between' }}><span>wagmi id</span><span style={{ fontFamily:'monospace' }}>{String(currentChainId ?? 'n/a')}</span></div>
-            <div style={{ display:'flex', justifyContent:'space-between' }}><span>provider id</span><span style={{ fontFamily:'monospace' }}>{String(typeof provChainId !== 'undefined' ? provChainId : 'n/a')}</span></div>
-            <div style={{ display:'flex', justifyContent:'space-between' }}><span>effective id</span><span style={{ fontFamily:'monospace' }}>{String(typeof provChainId !== 'undefined' ? provChainId : (currentChainId ?? 'n/a'))}</span></div>
-            <div style={{ display:'flex', justifyContent:'space-between' }}><span>wallet name</span><span style={{ fontFamily:'monospace' }}>{(provChainId ?? currentChainId) ? (getChainInfo((provChainId ?? currentChainId) || undefined)?.name || 'Unknown') : '—'}</span></div>
+            <div style={{ display:'flex', justifyContent:'space-between' }}><span>wagmi id</span><span style={{ fontFamily:'monospace' }}>{String(walletChainId ?? 'n/a')}</span></div>
+            <div style={{ display:'flex', justifyContent:'space-between' }}><span>provider id</span><span style={{ fontFamily:'monospace' }}>{String(providerChainId ?? 'n/a')}</span></div>
+            <div style={{ display:'flex', justifyContent:'space-between' }}><span>effective id</span><span style={{ fontFamily:'monospace' }}>{String(effectiveChainId ?? 'n/a')}</span></div>
+            <div style={{ display:'flex', justifyContent:'space-between' }}><span>wallet name</span><span style={{ fontFamily:'monospace' }}>{effectiveChainId ? (getChainInfo(effectiveChainId)?.name || 'Unknown') : '—'}</span></div>
             <div style={{ display:'flex', justifyContent:'space-between' }}><span>target id</span><span style={{ fontFamily:'monospace' }}>{configuredId}</span></div>
             <div style={{ display:'flex', justifyContent:'space-between' }}><span>target name</span><span style={{ fontFamily:'monospace' }}>{configuredName}</span></div>
-            <div style={{ display:'flex', justifyContent:'space-between' }}><span>mismatch</span><span style={{ fontFamily:'monospace', color: (provChainId ?? currentChainId) && (provChainId ?? currentChainId) !== configuredId ? '#f39c12' : '#4caf50' }}>{(provChainId ?? currentChainId) && (provChainId ?? currentChainId) !== configuredId ? 'yes' : 'no'}</span></div>
+            <div style={{ display:'flex', justifyContent:'space-between' }}><span>mismatch</span><span style={{ fontFamily:'monospace', color: effectiveChainId && effectiveChainId !== configuredId ? '#f39c12' : '#4caf50' }}>{effectiveChainId && effectiveChainId !== configuredId ? 'yes' : 'no'}</span></div>
           </div>
         )}
       </div>

@@ -1,5 +1,6 @@
 import type React from 'react';
 import type { OrgLogoId } from './orgLogos';
-import { orgLogos as internalMap } from './orgLogos';
-// Re-export to avoid mixing non-component exports in the main logo component file.
-export const ORG_LOGO_MAP: Record<OrgLogoId, React.FC<{ size?: number; className?: string }>> = internalMap;
+// orgLogos.tsx only exports the dispatcher component; recreate a map if needed later.
+// Placeholder: if individual logo components are required as a map, they should be exported separately.
+// For now we expose an empty map to satisfy imports without causing build failure.
+export const ORG_LOGO_MAP = {} as Record<OrgLogoId, React.FC<{ size?: number; className?: string }>>;
