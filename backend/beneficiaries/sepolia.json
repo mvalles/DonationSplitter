@@ -1,22 +1,22 @@
 [
   {
-    "address": "0xcb9CB1159999fBd1cf0AC07c7eE6de8A148A2D8d",
-    "bps": 2500,
-    "label": "Sepolia A"
+    "address": "0x304eDF195e978bCF98a9EC8878d7B467Dc88b37f",
+    "bps": 1000,
+    "label": "Sepolia ACC #1"
   },
   {
-    "address": "0x7777777777777777777777777777777777777777",
-    "bps": 2500,
-    "label": "Sepolia B"
+    "address": "0x7104a74226c1B11A978e4aDd70348859AEd2E091",
+    "bps": 2000,
+    "label": "Sepolia ACC #2"
   },
   {
-    "address": "0x8888888888888888888888888888888888888888",
-    "bps": 2500,
-    "label": "Sepolia C"
+    "address": "0x4A7572Dcb6B0174bBBae3065b009a7a4434c8e60",
+    "bps": 3000,
+    "label": "Sepolia ACC #3"
   },
   {
-    "address": "0x9999999999999999999999999999999999999999",
-    "bps": 2500,
-    "label": "Sepolia D"
+    "address": "0xF3b9C7Af6800878623912DFa377dE749A4fdbf51",
+    "bps": 4000,
+    "label": "Sepolia ACC #4"
   }
 ]

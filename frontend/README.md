@@ -45,20 +45,26 @@ Vite config (`vite.config.ts`) can set `base` if deploying under a subpath.
 Create / edit `frontend/.env` (NOT the root) with:
 
 ```
-VITE_TARGET_CHAIN=local   # options: local | sepolia | mainnet (aliases: localhost/hardhat -> local, sep -> sepolia, main -> mainnet)
-#VITE_HARDHAT_RPC=https://<your-codespace-subdomain>-8545.app.github.dev
+# Select dashboard data source chain (affects which contract address is shown when wallet disconnected)
+VITE_TARGET_CHAIN=local        # local | sepolia | mainnet (aliases: localhost/hardhat -> local, sep -> sepolia, main -> mainnet)
+
+# Optional RPC for remote Hardhat (Codespaces / tunnel). If unset defaults to http://127.0.0.1:8545
+VITE_HARDHAT_RPC=https://<codespace-subdomain>-8545.app.github.dev
+
+# Uncomment to show a small debug panel with chain diagnostic info
+#VITE_DEBUG_NETWORK=1
 ```
 
 Behavior:
-- If `VITE_TARGET_CHAIN` is missing or invalid → defaults to `sepolia` and logs a console warning.
-- The UI (when no wallet) shows `CONFIGURED: <Chain>` pill using this value.
-- When a wallet connects, the live chainId drives the TESTNET/MAINNET badge; local 31337 is treated as testnet (not real ETH).
-- Mismatch (wallet chain != configured target) disables donate & shows an alert.
-- `VITE_HARDHAT_RPC` lets you point localhost chain to a remote Codespaces Hardhat node; fallback is `http://127.0.0.1:8545`.
+1. Missing/invalid `VITE_TARGET_CHAIN` → defaults to `sepolia` (logs an info/warn in console).
+2. TARGET badge always reflects configured chain (even if wallet on otra red).
+3. If wallet chain ≠ target, donate/withdraw are deshabilitados y aparece aviso de mismatch.
+4. Datos de beneficiarios quedan anclados al target para evitar “saltos” al cambiar red en la wallet.
+5. `VITE_HARDHAT_RPC` permite que el navegador acceda a un nodo Hardhat remoto (p.ej. Codespaces) en lugar de localhost.
 
 Console Diagnostics:
-- On load you will see: `[DonationSplitter] VITE_TARGET_CHAIN raw value: <raw> | resolved: <Label> id <id>`.
-	Use this to confirm the value was parsed as expected.
+- On load: `[DonationSplitter] VITE_TARGET_CHAIN raw value: <raw> | resolved: <Label> id <id>`.
+  Úsalo para verificar parsing correcto.
 
 ### Dynamic Contract Address Resolution
 `src/contractInfo.ts` exports:
@@ -77,3 +83,17 @@ Mobile breakpoints at 640px & 480px collapse stats and compress chips; stacked b
 ### Cross References
 - Project overview: [../README.md](../README.md)
 - Backend (deployment & history): [../backend/README.md](../backend/README.md)
+
+### Deploying to Vercel (Sepolia)
+1. Asegúrate de tener en `src/contractInfo.ts` la dirección correcta para chainId 11155111.
+2. Configura en Vercel (Project Settings → Environment Variables):
+	- `VITE_TARGET_CHAIN=sepolia`
+	- (Opcional) `VITE_HARDHAT_RPC=https://<codespace-subdomain>-8545.app.github.dev` si quieres fallback local.
+3. Ajusta root directory a `frontend/` si usas monorepo.
+4. Build command: `npm run build` (usa scripts existentes).
+5. Tras el despliegue abre DevTools → Console y verifica el log de resolución de cadena.
+6. Al redeploy del contrato: actualiza `contractInfo.ts` + dispara nuevo build.
+
+Hardening opcional:
+- Añade encabezados de seguridad (Strict-Transport-Security, X-Frame-Options) con un archivo `vercel.json` si se requiere.
+- Revisa que no haya variables sensibles expuestas (prefijo VITE_ es público).

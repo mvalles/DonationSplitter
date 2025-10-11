@@ -18,10 +18,12 @@ npx hardhat compile
 npx hardhat test            # if/when tests added
 ```
 
-Run local node & deploy:
+Run local node & deploy (explicit DS_ENV=dev selects beneficiaries/dev.json):
 ```bash
-npx hardhat node
-npx hardhat ignition deploy --network localhost ignition/modules/DonationSplitter.ts
+export DS_ENV=dev
+npx hardhat node   # keep this terminal open
+# in a second terminal
+DS_ENV=dev npx hardhat ignition deploy --network localhost ignition/modules/DonationSplitter.ts
 ```
 
 ### Environment / Secrets
@@ -44,11 +46,11 @@ npx hardhat keystore list
 ### Deploy (Testnet / Mainnet)
 Sepolia:
 ```bash
-npx hardhat ignition deploy --network sepolia ignition/modules/DonationSplitter.ts
+DS_ENV=sepolia npx hardhat ignition deploy --network sepolia ignition/modules/DonationSplitter.ts
 ```
 Mainnet (prepare & double‑check beneficiaries, audits, owner safety):
 ```bash
-npx hardhat ignition deploy --network mainnet ignition/modules/DonationSplitter.ts
+DS_ENV=mainnet MAINNET_DEPLOY=1 npx hardhat ignition deploy --network mainnet ignition/modules/DonationSplitter.ts
 ```
 
 After each deploy: update the **Deployment History** below and sync frontend `contractInfo.ts`.
@@ -114,6 +116,13 @@ Mainnet (requires populated mainnet.json + explicit opt-in):
 ```bash
 DS_ENV=mainnet MAINNET_DEPLOY=1 npx hardhat ignition deploy --network mainnet ignition/modules/DonationSplitter.ts
 ```
+
+#### Remote Hardhat (Codespaces / tunnel)
+If running Hardhat node in a remote dev environment expose the RPC URL and (optionally) point the frontend via `VITE_HARDHAT_RPC`:
+```
+VITE_HARDHAT_RPC=https://<codespace-subdomain>-8545.app.github.dev
+```
+This allows the browser dashboard to connect even when `localhost:8545` is not directly reachable.
 
 #### Updating the Distribution
 1. Edit the appropriate JSON file (e.g. `sepolia.json`) in a PR so changes are reviewable.

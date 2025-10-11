@@ -428,15 +428,15 @@ function BeneficiariesCard() {
         {/* Line 2: Legend + stats + theme (aligned to left, normal card padding) */}
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', width:'100%', fontSize:'.55rem', flexWrap:'wrap', rowGap:'.4rem' }}>
           <div style={{ display:'flex', alignItems:'center', gap:'1rem', flexWrap:'wrap' }}>
-            <span style={{ display:'inline-flex', alignItems:'center', gap:'.3rem' }}><span style={{ width:14, height:6, background:'linear-gradient(90deg,#2e7dd1,#4aa8ff)', borderRadius:3 }} /> Withdrawn</span>
             <span style={{ display:'inline-flex', alignItems:'center', gap:'.3rem' }}><span style={{ width:14, height:6, background:'linear-gradient(90deg,#f39c12,#f1c40f)', borderRadius:3 }} /> Pending</span>
+            <span style={{ display:'inline-flex', alignItems:'center', gap:'.3rem' }}><span style={{ width:14, height:6, background:'linear-gradient(90deg,#2e7dd1,#4aa8ff)', borderRadius:3 }} /> Withdrawn</span>
             <span style={{ display:'inline-flex', alignItems:'center', gap:'.3rem' }} title="P=Pending W=Withdrawn L=Lifetime">Abbrev: P / W / L</span>
           </div>
           <div style={{ display:'flex', alignItems:'center', gap:'1.1rem', flexWrap:'wrap', justifyContent:'flex-end', fontSize:'.62rem', fontWeight:600, letterSpacing:'.25px' }}>
-            <span style={{ whiteSpace:'nowrap' }}>Total: {(total/100).toFixed(2)}%</span>
             <span style={{ whiteSpace:'nowrap' }}>Pending: { anyLoading ? (<span style={{ display:'inline-block', width:50 }} className="skeleton skeleton-sm" />) : `${(Number(totalPending)/1e18).toFixed(4)} ETH` }</span>
             <span style={{ whiteSpace:'nowrap' }}>Withdrawn: { anyLoading ? (<span style={{ display:'inline-block', width:60 }} className="skeleton skeleton-sm" />) : `${(Number(totalWithdrawn)/1e18).toFixed(4)} ETH` }</span>
             <span style={{ whiteSpace:'nowrap' }}>Lifetime: { anyLoading ? (<span style={{ display:'inline-block', width:55 }} className="skeleton skeleton-sm" />) : `${(Number(totalLifetime)/1e18).toFixed(4)} ETH` }</span>
+            <span style={{ whiteSpace:'nowrap' }}>Total: {(total/100).toFixed(2)}%</span>
           </div>
         </div>
         {(import.meta.env?.VITE_DEBUG_NETWORK === '1') && (
