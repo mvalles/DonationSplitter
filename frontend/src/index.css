@@ -70,6 +70,9 @@ button { cursor: pointer; font-family: inherit; font-weight: 500; position: rela
   line-height: 1;
   box-shadow: 0 3px 14px -2px rgba(80,74,225,0.45);
   transition: background var(--transition), transform var(--transition), box-shadow var(--transition);
+  -webkit-appearance: none; /* Safari normalize */
+  appearance: none;
+  white-space: nowrap;
 }
 .btn:hover { background: var(--btn-bg-hover); transform: translateY(-2px); box-shadow: 0 6px 22px -4px rgba(80,74,225,0.6); }
 .btn:active { transform: translateY(0); }
@@ -140,6 +143,7 @@ button { cursor: pointer; font-family: inherit; font-weight: 500; position: rela
 @keyframes copiedPulse { 0% { transform:scale(.94); } 40% { transform:scale(1.04); } 100% { transform:scale(1); } }
 .addr-chip .addr-label { opacity:.6; }
 .addr-chip .addr-value { font-weight:600; }
+/* AddressChip reutiliza .addr-chip + .explorer-chip (no estilos extra necesarios por ahora) */
 .explorer-chip { font-size:.55rem; text-decoration:none; color:var(--accent-alt); display:inline-flex; align-items:center; gap:.25rem; padding:.28rem .5rem; background:rgba(255,255,255,0.05); border-radius:6px; border:1px solid rgba(255,255,255,0.12); }
 .explorer-chip .ext-arrow { font-size:.65em; opacity:.7; }
 .beneficiary-desc { font-size:.65rem; color: var(--text-secondary); line-height:1.3; }
@@ -193,10 +197,25 @@ button { cursor: pointer; font-family: inherit; font-weight: 500; position: rela
 .badge-test { background: linear-gradient(135deg,#3b3f52,#272b37); color: var(--warn); border:1px solid rgba(255,204,77,0.3); }
 .badge-main { background: linear-gradient(135deg,#4e1218,#2a0d10); color: var(--danger); border:1px solid rgba(255,77,79,0.4); }
 
+/* Explorer & role chips */
+.role-chip { font-size:.55rem; padding:.28rem .6rem; border-radius:999px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.15); letter-spacing:.5px; font-weight:600; display:inline-flex; align-items:center; gap:.4rem; }
+.role-chip.owner { background:linear-gradient(135deg,#3d2f55,#262036); border-color:rgba(180,120,255,0.35); }
+.role-chip.beneficiary { background:linear-gradient(135deg,#254a36,#1d3327); border-color:rgba(120,255,180,0.30); }
+.role-chip.donor { background:linear-gradient(135deg,#4a3a25,#33291d); border-color:rgba(255,200,120,0.30); }
+.explorer-bar { font-size:.55rem; display:flex; flex-wrap:wrap; gap:.65rem; align-items:center; background:rgba(255,255,255,0.04); padding:.45rem .65rem; border:1px solid rgba(255,255,255,0.12); border-radius:8px; }
+.explorer-bar a { text-decoration:none; font-weight:600; }
+.explorer-bar .label { opacity:.7; font-weight:600; letter-spacing:.5px; }
+.tx-hash-chip { font-family:'JetBrains Mono','Roboto Mono',monospace; font-size:.55rem; background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.18); padding:.25rem .45rem; border-radius:6px; display:inline-flex; align-items:center; gap:.35rem; cursor:pointer; }
+.tx-hash-chip.copied { outline:1px solid var(--accent-alt); box-shadow:0 0 0 3px rgba(74,212,255,0.15); }
+.tx-hash-chip .copy-icon { font-size:.6rem; opacity:.7; }
+
 .alert { font-size:.7rem; line-height:1.3; padding:.55rem .7rem; border-radius: var(--radius-sm); background: rgba(255,77,79,0.08); border:1px solid rgba(255,77,79,0.25); color: var(--danger); }
 .note { font-size:.7rem; line-height:1.3; padding:.55rem .7rem; border-radius: var(--radius-sm); background: rgba(255,204,77,0.08); border:1px solid rgba(255,204,77,0.25); color: var(--warn); }
 
 form.donate-form { display:flex; flex-direction:column; gap:.9rem; }
+form.donate-form.inline-layout { flex-direction:row; align-items:flex-start; gap:.65rem; flex-wrap:wrap; }
+form.donate-form.inline-layout > .donate-input-wrap { flex:1 1 180px; }
+form.donate-form.inline-layout > .donate-actions { display:flex; align-items:center; gap:.55rem; }
 form.donate-form input[type=number] {
   background: rgba(255,255,255,0.07);
   border:1px solid rgba(255,255,255,0.18);
@@ -247,3 +266,12 @@ footer.app-footer { margin-top: 2rem; text-align:center; font-size:.65rem; opaci
 ::-webkit-scrollbar { width:10px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: linear-gradient(var(--accent), var(--accent-alt)); border-radius: 20px; border: 3px solid #0c0d11; }
+
+/* === Tabs & Explorer extra badges === */
+.tabs-wrapper { display:flex; flex-direction:column; gap:.9rem; }
+.tabs-nav { display:flex; gap:.5rem; flex-wrap:wrap; }
+.tab-btn { background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); padding:.45rem .9rem; border-radius:7px; font-size:.65rem; font-weight:600; letter-spacing:.5px; cursor:pointer; color:var(--text-secondary); }
+.tab-btn.active { background:linear-gradient(135deg,#3a3750,#262537); color:#fff; border-color:rgba(180,160,255,0.4); }
+.tab-btn:hover { border-color:rgba(255,255,255,0.25); color:#fff; }
+.tabs-content { display:flex; flex-direction:column; gap:1.1rem; }
+.badge-unverified { font-size:.5rem; letter-spacing:.5px; background:linear-gradient(135deg,#3d2b24,#2a1d18); color:#ffbd8a; padding:.3rem .55rem; border-radius:999px; border:1px solid rgba(255,180,120,0.25); font-weight:600; }

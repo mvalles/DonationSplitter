@@ -1,15 +1,14 @@
-
-
-
 import './App.css';
-import { useAccount, useConnect, useDisconnect, useReadContract, useBalance, useChainId, useChains, useReadContracts } from 'wagmi';
+import { useAccount, useReadContract, useBalance, useChainId, useChains, useReadContracts, useConnect, useDisconnect } from 'wagmi';
+import type { Chain } from 'viem';
+import { metaMask } from 'wagmi/connectors';
 import { useDonateETH, useWithdrawETH } from './contractWriteHooks';
 import { useRefetchKey } from './RefetchContext';
-import { metaMask } from 'wagmi/connectors';
 import { DONATION_SPLITTER_ABI, type DonationSplitterAbi, getDonationSplitterAddress, TARGET_CHAIN_ID as CONFIG_TARGET_CHAIN_ID, TARGET_CHAIN_LABEL } from './contractInfo';
 import { useEffectiveChain } from './hooks/useEffectiveChain';
 import DonationSplitArt from './DonationSplitArt';
-import { useState } from 'react';
+import React, { useState } from 'react';
+import { blockscoutTxUrl, blockscoutAddressUrl, hasBlockscout } from './blockscout';
 import { BENEFICIARIES, beneficiariesTotalBps, formatPercent } from './beneficiaries';
 import { getChainInfo, makeAddressLink } from './chainMeta';
 import { OrgLogo } from './orgLogos';
@@ -18,26 +17,42 @@ import { OrgLogo } from './orgLogos';
 
 function App() {
   const { address, isConnected } = useAccount();
+  const { connect, isPending: isConnecting } = useConnect();
+  const { disconnect } = useDisconnect();
   const chainId = useChainId();
   const chains = useChains();
-  const { connect, isPending } = useConnect();
-  const { disconnect } = useDisconnect();
+
   const [ethAmount, setEthAmount] = useState('');
   const [showMainnetConfirm, setShowMainnetConfirm] = useState(false);
   // Target chain (from env) determining which contract we show when no wallet is connected
   const TARGET_CHAIN_ID = CONFIG_TARGET_CHAIN_ID;
   const [donateError, setDonateError] = useState<string | null>(null);
   const [withdrawError, setWithdrawError] = useState<string | null>(null);
+  const [lastDonateTx, setLastDonateTx] = useState<string | null>(null);
+  const [lastWithdrawTx, setLastWithdrawTx] = useState<string | null>(null);
 
     // Refetch context
   const { bump } = useRefetchKey();
     // Read pending balance for the connected user
     const runtimeAddress = getDonationSplitterAddress(chainId);
     // Determine active chain early (needed for mismatch gating)
-    const activeChain = chains.find(c => c.id === chainId);
+  const activeChain = chains.find((c: Chain) => c.id === chainId);
     const isMainnet = activeChain?.id === 1;
   // Unified chain / mismatch state via shared hook (removes duplicated provider listener logic)
-  const { mismatch } = useEffectiveChain();
+  const { mismatch, providerAvailable, ready } = useEffectiveChain();
+  // Auto-disconnect logic if wagmi thinks connected but no injected provider after grace period (mobile Safari / iOS deep link case)
+  const [providerGraceExpired, setProviderGraceExpired] = useState(false);
+  if (isConnected && ready && !providerAvailable && !providerGraceExpired) {
+    // Start a one-time timer (avoid setting multiple)
+    setTimeout(() => {
+      // if still no provider, flag grace expired (UI warning + optional disconnect)
+      setProviderGraceExpired(true);
+    }, 3500);
+  }
+  if (providerGraceExpired && isConnected && !providerAvailable) {
+    // Reset and allow user to reconnect manually
+    setProviderGraceExpired(false);
+  }
     const { data: pendingEth, refetch } = useReadContract({
       address: runtimeAddress,
       abi: DONATION_SPLITTER_ABI,
@@ -58,14 +73,33 @@ function App() {
     });
 
   // activeChain / isMainnet / mismatch already defined above for early gating
-    function truncateAddress(addr?: string) {
-      if (!addr) return '';
-      return addr.slice(0, 6) + '...' + addr.slice(-4);
-    }
+    // truncateAddress eliminado: AddressChip encapsula truncado y copia
 
     // Contract write hooks
   const { donateETH } = useDonateETH();
     const { withdrawETH, isPending: isWithdrawing } = useWithdrawETH();
+  // Read contract owner
+  const { data: ownerAddress } = useReadContract({
+    address: runtimeAddress,
+    abi: DONATION_SPLITTER_ABI,
+    functionName: 'owner',
+    query: { enabled: !!runtimeAddress }
+  });
+  // Read beneficiaries list (addresses only)
+  const { data: beneficiariesListData } = useReadContract({
+    address: runtimeAddress,
+    abi: DONATION_SPLITTER_ABI,
+    functionName: 'beneficiariesList',
+    query: { enabled: !!runtimeAddress }
+  });
+  let beneficiaryAddresses: string[] = [];
+  if (Array.isArray(beneficiariesListData) && beneficiariesListData.length === 2 && Array.isArray(beneficiariesListData[0])) {
+    beneficiaryAddresses = (beneficiariesListData as unknown as [string[], number[]])[0].map(a => a.toLowerCase());
+  }
+  const lowerAddr = address?.toLowerCase();
+  const isOwner = !!ownerAddress && lowerAddr === (ownerAddress as string).toLowerCase();
+  const isBeneficiary = !!lowerAddr && beneficiaryAddresses.includes(lowerAddr);
+  const role: 'owner' | 'beneficiary' | 'donor' | 'unauth' = !isConnected ? 'unauth' : isOwner ? 'owner' : isBeneficiary ? 'beneficiary' : 'donor';
 
     // Provide a helper to request network switch when mismatch
     // Removed network switch helper per simplification request
@@ -96,24 +130,30 @@ function App() {
             {/* Simplified: no inline mismatch badge here */}
           </div>
         </div>
-        {!isConnected && (
-          <div style={{ marginLeft:'auto', display:'flex', flexDirection:'column', alignItems:'flex-end', gap:'.35rem' }}>
+        <div style={{ marginLeft:'auto', display:'flex', flexDirection:'column', alignItems:'flex-end', gap:'.35rem' }}>
+          {!isConnected && (
+            <>
+              <button
+                className="btn primary"
+                disabled={isConnecting}
+                onClick={() => connect({ connector: metaMask() })}
+              >{isConnecting ? 'Connecting...' : 'Connect Wallet'}</button>
+              <a
+                href="https://metamask.io/download/"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ fontSize:'.6rem', textDecoration:'none', color:'var(--accent)', opacity:.85, fontWeight:500 }}
+              >Get MetaMask</a>
+            </>
+          )}
+          {isConnected && (
             <button
               className="btn primary"
-              style={{ fontSize:'.9rem', padding:'.6rem 1.15rem', fontWeight:600, boxShadow:'0 6px 20px -6px rgba(0,0,0,.55)' }}
-              onClick={() => connect({ connector: metaMask() })}
-              disabled={isPending}
-            >
-              {isPending ? 'Connecting...' : 'Connect Wallet'}
-            </button>
-            <a
-              href="https://ethereum.org/en/wallets/"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ fontSize:'.6rem', textDecoration:'none', color:'var(--accent)', opacity:.85, fontWeight:500 }}
-            >Need a wallet?</a>
-          </div>
-        )}
+              style={{ padding:'.7rem 1.15rem', fontWeight:600 }}
+              onClick={()=> disconnect()}
+            >Disconnect</button>
+          )}
+        </div>
       </header>
       <section style={{ paddingTop:'.25rem' }}>
         {/* No global banner; show a single concise English notice inside wallet panel & donate panel */}
@@ -132,6 +172,7 @@ function App() {
                     const value = ethAmount && !isNaN(Number(ethAmount)) ? BigInt(Math.floor(Number(ethAmount.toString()) * 1e18)) : undefined;
                     if (!value) throw new Error('Invalid amount');
                     const tx = await donateETH(value);
+                    setLastDonateTx(tx);
                     setEthAmount('');
                     bump();
                     if (refetch) refetch();
@@ -160,68 +201,98 @@ function App() {
             </div>
           </div>
         )}
+        {isConnected && ready && !providerAvailable && !mismatch && (
+          <div className="card" style={{ marginBottom:'1rem', border:'1px solid rgba(255,170,0,0.35)', background:'rgba(255,170,0,0.08)' }}>
+            <div style={{ fontSize:'.65rem', lineHeight:1.4 }}>
+              Wallet session detected but no injected provider (mobile Safari / iOS?). Open this dApp inside MetaMask browser or return after approving the connection. Session will reset if provider is still absent.
+            </div>
+          </div>
+        )}
         {isConnected && (
           <div className="card beneficiaries-card" style={{ marginBottom: '1.5rem' }}>
             <BeneficiariesCard />
           </div>
         )}
         {isConnected && (
-          <div className="panels-grid">
-            {/* Wallet Panel */}
-            <div className="card wallet-panel">
-              <h2>Wallet</h2>
-              <div className="wallet-lines">
-                <div className="kv-row"><span className="kv-label">Account</span><span className="mono">{truncateAddress(address)}</span></div>
-                <div className="kv-row">
-                  <span className="kv-label">Network</span>
-                  <span className="mono">{activeChain ? `${activeChain.name} · id ${activeChain.id}` : 'Unknown'}</span>
-                </div>
-                <div className="kv-row"><span className="kv-label">Balance</span>
-                  <span className="mono">
-                    {userBalance ? `${(Number(userBalance.value)/1e18).toFixed(4)} ${userBalance.symbol}` : (
-                      <span style={{ display: 'inline-block', width: 90 }} className="skeleton skeleton-sm" />
-                    )}
-                  </span>
-                </div>
-                <div className="badges">
-                  {!isMainnet && activeChain && <span className="badge badge-test">TEST / NON-MAINNET</span>}
-                  {isMainnet && <span className="badge badge-main">MAINNET · CAUTION</span>}
-                </div>
-                <div style={{ display:'flex', flexDirection:'column', gap:'.35rem', marginTop:'.35rem' }}>
-                  <a
-                    href={makeAddressLink(activeChain?.id || TARGET_CHAIN_ID, runtimeAddress)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ fontSize:'.6rem', textDecoration:'none', display:'inline-flex', alignItems:'center', gap:'.4rem', background:'rgba(255,255,255,0.06)', padding:'.4rem .55rem', borderRadius:'6px', border:'1px solid rgba(255,255,255,0.12)', color:'var(--accent-alt)' }}
-                    title="View contract on explorer"
-                  >
-                    <span style={{ fontWeight:600 }}>Contract</span>
-                    <span className="mono" style={{ fontSize:'.55rem' }}>{truncateAddress(runtimeAddress)}</span>
-                    <span style={{ fontSize:'.65em', opacity:.7 }}>↗</span>
-                  </a>
-                  {mismatch && (
-                    <div className="alert" style={{ margin:0 }}>Network mismatch: wallet {activeChain?.name} vs target {TARGET_CHAIN_LABEL}. Data shown = target. Switch network to interact.</div>
-                  )}
-                </div>
-                {isMainnet && (
-                  <div className="alert">You are on mainnet. Double‑check addresses and amounts before sending.</div>
-                )}
-                {!isMainnet && activeChain && (
-                  <div className="note">Test or local network. Funds are not real ETH.</div>
-                )}
+          <TabbedPanels>
+            <div data-tab="Wallet" className="card wallet-panel">
+              <div className="card-header-row" style={{ alignItems:'flex-start' }}>
+                <h2 style={{ margin:0 }}>Wallet</h2>
               </div>
-              <div className="divider" />
-              <button className="btn secondary" onClick={() => disconnect()}>Disconnect</button>
+              <div style={{ display:'grid', gap:'1.1rem' }}>
+                <section style={{ display:'grid', gap:'.4rem' }}>
+                  <div style={{ display:'flex', gap:'1.4rem', flexWrap:'wrap' }}>
+                    <div style={{ flex:'1 1 280px', display:'grid', gap:'.55rem', minWidth:250 }}>
+                      <div className="kv-row" style={{ justifyContent:'space-between', flexWrap:'wrap', gap:'.5rem' }}>
+                        <span className="kv-label">Account</span>
+                        <div style={{ display:'flex', alignItems:'center', gap:'.5rem', flexWrap:'wrap' }}>
+                          <AddressChip
+                            label="ADDR"
+                            address={address || ''}
+                            explorerHref={address ? makeAddressLink(activeChain?.id || TARGET_CHAIN_ID, address) : undefined}
+                          />
+                          {activeChain && (
+                            <span className={isMainnet ? 'badge badge-main' : 'badge badge-test'} style={{ padding:'.3rem .6rem' }}>
+                              {isMainnet ? '🛡 ' + activeChain.name : '🧪 ' + activeChain.name}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="kv-row"><span className="kv-label">Balance</span><span className="mono">{userBalance ? `${(Number(userBalance.value)/1e18).toFixed(4)} ${userBalance.symbol}` : (<span style={{ display:'inline-block', width:90 }} className="skeleton skeleton-sm" />)}</span></div>
+                    </div>
+                    <div aria-hidden="true" style={{ width:'1px', background:'linear-gradient(180deg,rgba(255,255,255,0.15),rgba(255,255,255,0.05))', alignSelf:'stretch', borderRadius:'1px', flex:'0 0 1px' }} />
+                    <div style={{ flex:'1 1 320px', display:'grid', gap:'.65rem', minWidth:260 }}>
+                      <div className="kv-row" style={{ alignItems:'flex-start', flexDirection:'column', gap:'.5rem' }}>
+                        <div style={{ display:'flex', width:'100%', alignItems:'center', gap:'.6rem', flexWrap:'wrap', justifyContent:'space-between' }}>
+                          <span className="kv-label">Contract</span>
+                          <div style={{ display:'flex', alignItems:'center', gap:'.55rem', flexWrap:'wrap', justifyContent:'flex-end' }}>
+                            <span className={`role-chip ${role}`}>{role.toUpperCase()}</span>
+                            <AddressChip
+                              label="ADDR"
+                              address={runtimeAddress}
+                              explorerHref={makeAddressLink(activeChain?.id || TARGET_CHAIN_ID, runtimeAddress)}
+                            />
+                            {hasBlockscout(activeChain?.id || TARGET_CHAIN_ID) && (
+                              <span className="badge-unverified" style={{ fontSize:'.5rem', padding:'.28rem .5rem' }}>Unverified</span>
+                            )}
+                            {activeChain && (
+                              <span className={isMainnet ? 'badge badge-main' : 'badge badge-test'} style={{ padding:'.3rem .55rem' }}>
+                                {isMainnet ? '🛡 ' + activeChain.name : '🧪 ' + activeChain.name}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="kv-row" style={{ gap:'.75rem', flexWrap:'wrap' }}>
+                        {/* Fila Role/Copy eliminada: el chip de rol ya aparece junto a Contract y la dirección se mostrará como AddressChip */}
+                      </div>
+                    </div>
+                  </div>
+                </section>
+                <section style={{ marginTop:'.2rem' }}>
+                  {mismatch && <div className="alert" style={{ margin:0 }}>Network mismatch: data from {TARGET_CHAIN_LABEL}.</div>}
+                  {isMainnet && !mismatch && <div className="alert" style={{ marginTop:'.4rem' }}>MAINNET: check amounts.</div>}
+                  {/* Nota test eliminada (chip ya comunica estado). */}
+                </section>
+                {/* Botón Disconnect movido a barra de pestañas */}
+              </div>
             </div>
             {/* Donate Panel */}
-            <div className="card">
+            {(role === 'owner' || role === 'donor' || role === 'beneficiary') && (
+              <div data-tab="Donate" className="card">
               <h2>Donate ETH</h2>
+              {/* Explorer line removed as per design refinement */}
               {mismatch && (
                 <div className="alert" style={{ marginTop: '.3rem' }}>
                   Wallet {activeChain?.name} (id {activeChain?.id}) ≠ target {TARGET_CHAIN_LABEL} (id {TARGET_CHAIN_ID}). Read‑only mode until you switch.
                 </div>
               )}
-              <form className="donate-form"
+              {isConnected && ready && !providerAvailable && !mismatch && (
+                <div className="alert" style={{ marginTop: '.3rem' }}>
+                  No injected provider available (mobile). Donation disabled until provider appears.
+                </div>
+              )}
+              <form className="donate-form inline-layout"
                 onSubmit={async e => {
                   e.preventDefault();
                   setDonateError(null);
@@ -234,6 +305,7 @@ function App() {
                     const value = ethAmount && !isNaN(Number(ethAmount)) ? BigInt(Math.floor(Number(ethAmount.toString()) * 1e18)) : undefined;
                     if (!value) throw new Error('Invalid amount');
                     const tx = await donateETH(value);
+                    setLastDonateTx(tx);
                     setEthAmount('');
                     bump();
                     if (refetch) refetch();
@@ -244,7 +316,7 @@ function App() {
                     console.error('Donation error:', err);
                   }
                 }}>
-                <div>
+                <div className="donate-input-wrap">
                   <input
                     type="number"
                     min="0"
@@ -253,16 +325,65 @@ function App() {
                     value={ethAmount}
                     onChange={e => setEthAmount(e.target.value)}
                     required
+                    style={{ width:'100%' }}
                   />
                 </div>
-                <button className="btn" type="submit" disabled={mismatch}>Donate</button>
+                <div className="donate-actions">
+                  <button className="btn donate-compact" type="submit" disabled={mismatch || (isConnected && ready && !providerAvailable)} style={{ padding:'.65rem 1.05rem', fontSize:'.75rem', fontWeight:600, whiteSpace:'nowrap' }}>Donate</button>
+                </div>
               </form>
+              {ethAmount && !isNaN(Number(ethAmount)) && Number(ethAmount) > 0 && (
+                <div style={{ marginTop:'.75rem', background:'linear-gradient(145deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02))', border:'1px solid rgba(255,255,255,0.15)', padding:'.75rem .8rem .85rem', borderRadius:10, position:'relative', overflow:'hidden' }}>
+                  <div style={{ position:'absolute', inset:0, pointerEvents:'none', background:'radial-gradient(circle at 85% 15%, rgba(255,255,255,0.15), transparent 60%)', opacity:.35 }} />
+                  <div style={{ fontWeight:600, fontSize:'.68rem', letterSpacing:'.5px', marginBottom:'.55rem', display:'flex', alignItems:'center', gap:'.5rem' }}>
+                    <span style={{ background:'rgba(255,255,255,0.08)', padding:'.32rem .55rem', borderRadius:6, border:'1px solid rgba(255,255,255,0.15)', fontSize:'.55rem' }}>Preview Split</span>
+                    <span style={{ fontSize:'.48rem', opacity:.55, textTransform:'uppercase', letterSpacing:'.6px' }}>Off-chain estimation</span>
+                  </div>
+                  <div style={{ display:'grid', gap:'.45rem' }}>
+                    {BENEFICIARIES.map(b => {
+                      const amountEth = Number(ethAmount);
+                      const share = (amountEth * b.bps) / 10000;
+                      const pctNum = (b.bps/100);
+                      const barGradient = 'linear-gradient(90deg,var(--accent) 0%, var(--accent-alt) 100%)';
+                      return (
+                        <div key={b.address} style={{ display:'grid', gridTemplateColumns:'minmax(140px,1fr) auto', alignItems:'center', gap:'.75rem' }}>
+                          <div style={{ display:'flex', flexDirection:'column', gap:'.3rem' }}>
+                            <div style={{ display:'flex', alignItems:'center', gap:'.45rem', flexWrap:'wrap' }}>
+                              <span style={{ fontFamily:'monospace', fontSize:'.65rem', background:'rgba(255,255,255,0.07)', padding:'.25rem .45rem', borderRadius:5, border:'1px solid rgba(255,255,255,0.15)' }}>{pctNum.toFixed(2)}%</span>
+                              <span style={{ fontSize:'.63rem', fontWeight:600, letterSpacing:'.3px' }}>{b.label}</span>
+                            </div>
+                            <div style={{ position:'relative', height:6, background:'rgba(255,255,255,0.08)', borderRadius:4, overflow:'hidden' }}>
+                              <div style={{ position:'absolute', inset:0, width:`${pctNum}%`, background:barGradient, boxShadow:'0 0 0 1px rgba(255,255,255,0.08) inset', transition:'width .4s ease' }} />
+                            </div>
+                          </div>
+                          <div style={{ fontFamily:'monospace', fontSize:'.6rem', fontWeight:500, textAlign:'right' }}>{share.toFixed(6)} ETH</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div style={{ marginTop:'.55rem', fontSize:'.5rem', letterSpacing:'.4px', opacity:.7, display:'flex', alignItems:'center', gap:'.5rem', flexWrap:'wrap' }}>
+                    <span>Residual rounding → last beneficiary.</span>
+                    <span style={{ background:'rgba(255,255,255,0.07)', padding:'.25rem .45rem', borderRadius:5, fontSize:'.48rem', border:'1px solid rgba(255,255,255,0.15)' }}>Approximate</span>
+                  </div>
+                </div>
+              )}
               {donateError && <p className="alert" style={{ marginTop: '.5rem' }}>Donate error: {donateError}</p>}
-                    {mismatch && <p className="note" style={{ marginTop: '.5rem' }}>Switch wallet network to id {TARGET_CHAIN_ID} to enable donations.</p>}
+              {mismatch && <p className="note" style={{ marginTop: '.5rem' }}>Switch wallet network to id {TARGET_CHAIN_ID} to enable donations.</p>}
+              {isConnected && ready && !providerAvailable && !mismatch && <p className="note" style={{ marginTop: '.5rem' }}>Provider not detected. Re-open in MetaMask browser or refresh after returning from app switch.</p>}
             </div>
+            )}
             {/* Withdraw Panel */}
-            <div className="card">
+            {(role === 'beneficiary' || (role === 'owner' && isBeneficiary)) && (
+              <div data-tab="Withdraw" className="card">
               <h2>Withdrawals</h2>
+              {hasBlockscout(activeChain?.id || TARGET_CHAIN_ID) && (
+                <div className="explorer-bar" style={{ marginBottom:'.55rem' }}>
+                  <span className="label">Explorer</span>
+                  <a href={blockscoutAddressUrl(activeChain?.id || TARGET_CHAIN_ID, runtimeAddress)} target="_blank" rel="noopener noreferrer">Contract ↗</a>
+                  {lastDonateTx && <TxHashChip label="Donate" hash={lastDonateTx!} url={blockscoutTxUrl(activeChain?.id || TARGET_CHAIN_ID, lastDonateTx!) || '#'} />}
+                  {lastWithdrawTx && <TxHashChip label="Withdraw" hash={lastWithdrawTx!} url={blockscoutTxUrl(activeChain?.id || TARGET_CHAIN_ID, lastWithdrawTx!) || '#'} />}
+                </div>
+              )}
               <p className="muted">Contract balance: <strong>{contractBalance ? (Number(contractBalance.value)/1e18).toFixed(4) : (<span style={{ display: 'inline-block', width: 80 }} className="skeleton skeleton-sm" />)}{contractBalance && ' ETH'}</strong></p>
               {(() => {
                 const pending = pendingEth as bigint | undefined;
@@ -275,6 +396,7 @@ function App() {
                       setWithdrawError(null);
                       try {
                         const tx = await withdrawETH();
+                        setLastWithdrawTx(tx);
                         bump();
                         if (refetch) refetch();
                         console.log('Withdraw TX:', tx);
@@ -293,8 +415,9 @@ function App() {
               ) : (
                 <p className="muted">No pending balance to withdraw.</p>
               )}
-            </div>
-          </div>
+              </div>
+            )}
+          </TabbedPanels>
         )}
         <div className="card" style={{ marginTop: '1.5rem' }}>
           <HowItWorks />
@@ -381,7 +504,7 @@ function BeneficiariesCard() {
           <h2 style={{ margin:0 }}>Beneficiaries</h2>
           <div style={{ display:'flex', alignItems:'center', gap:'.65rem', flexWrap:'wrap', justifyContent:'flex-end' }}>
             <span style={{ fontSize:'.6rem', letterSpacing:'.5px', padding:'.35rem .65rem', borderRadius:'999px', background: configuredId === 1 ? 'linear-gradient(135deg,#4e1218,#2a0d10)' : 'linear-gradient(135deg,#3b3f52,#272b37)', border:'1px solid rgba(255,255,255,0.18)', display:'inline-flex', gap:'.45rem', alignItems:'center', fontWeight:600, whiteSpace:'nowrap' }}>
-              TARGET: {configuredName}{configuredId !== 1 && <span style={{ color:'var(--warn)', fontWeight:700 }}>Not real ETH</span>}
+              {configuredId === 1 ? '🛡' : '🧪'} {configuredName}{configuredId !== 1 && <span style={{ color:'var(--warn)', fontWeight:700 }}> Not real ETH</span>}
             </span>
             {effectiveChainId && effectiveChainId !== configuredId && (
               <span style={{ fontSize:'.55rem', letterSpacing:'.5px', padding:'.3rem .6rem', borderRadius:'999px', background:'linear-gradient(135deg,#4d2f20,#372016)', border:'1px solid rgba(255,180,60,0.35)', display:'inline-flex', gap:'.35rem', alignItems:'center', fontWeight:600, whiteSpace:'nowrap' }} title={`Wallet network (${walletEffectiveInfo?.name || effectiveChainId}) differs from target (${configuredName})`}>
@@ -582,4 +705,109 @@ function useBeneficiaryFinancials() {
   const totalPending = pendingPerBeneficiary.reduce<bigint>((acc,v)=>acc+(v||0n),0n);
   const totalWithdrawn = withdrawnPerBeneficiary.reduce<bigint>((acc,v)=>acc+(v||0n),0n);
   return { pendingPerBeneficiary, withdrawnPerBeneficiary, anyLoading: isLoading, totalPending, totalWithdrawn };
+}
+
+// Tx hash chip component (copy + explorer link)
+interface TxHashChipProps { label: string; hash: string; url: string }
+function TxHashChip({ label, hash, url }: TxHashChipProps) {
+  const [copied, setCopied] = useState(false);
+  const short = hash ? `${hash.slice(0,6)}…${hash.slice(-4)}` : '';
+  function copy() {
+    if (!hash) return;
+    navigator.clipboard.writeText(hash).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1400);
+    }).catch(()=>{});
+  }
+  return (
+    <span className={`tx-hash-chip ${copied ? 'copied' : ''}`} title={copied ? 'Hash copiado' : 'Click para copiar hash'}>
+      <button type="button" onClick={copy} style={{ all:'unset', cursor:'pointer', fontWeight:600, letterSpacing:'.5px' }}>{label}</button>
+      <a href={url} target="_blank" rel="noopener noreferrer" className="mono" style={{ textDecoration:'none', fontWeight:500 }}>{short} ↗</a>
+    </span>
+  );
+}
+
+// AddressChip reutilizable (copia al click, muestra hash truncado y opcional enlace explorer separado con flecha)
+interface AddressChipProps { address: string; label?: string; explorerHref?: string; className?: string }
+function AddressChip({ address, label='ADDR', explorerHref, className }: AddressChipProps) {
+  const [copied, setCopied] = useState(false);
+  if (!address) return <span style={{ opacity:.4, fontSize:'.55rem' }}>—</span>;
+  const truncated = address.slice(0,6) + '...' + address.slice(-4);
+  function copy() {
+    navigator.clipboard.writeText(address).then(()=>{ setCopied(true); setTimeout(()=>setCopied(false), 1400); }).catch(()=>{});
+  }
+  return (
+    <span style={{ display:'inline-flex', alignItems:'center', gap:'.3rem' }} className={className}>
+      <button
+        type="button"
+        onClick={copy}
+        title={copied ? 'Copiado!' : `Copiar dirección: ${address}`}
+        className={`addr-chip ${copied ? 'copied' : ''}`}
+        style={{ fontSize:'.55rem' }}
+      >
+        {copied ? (
+          <span style={{ display:'inline-flex', alignItems:'center', gap:'.3rem' }}>
+            <span style={{ fontSize:'.7rem', color:'var(--accent-alt)' }}>✔</span>
+            Copied
+          </span>
+        ) : (
+          <span style={{ display:'inline-flex', alignItems:'center', gap:'.4rem' }}>
+            <span className="addr-label" style={{ fontWeight:600 }}>{label}</span>
+            <span className="addr-value" style={{ fontFamily:'JetBrains Mono, monospace' }}>{truncated}</span>
+          </span>
+        )}
+      </button>
+      {explorerHref && (
+        <a href={explorerHref} target="_blank" rel="noopener noreferrer" className="explorer-chip" style={{ textDecoration:'none' }} title="Ver en explorer">
+          ↗
+        </a>
+      )}
+    </span>
+  );
+}
+
+// Simple tabbed panels container
+interface TabbedPanelsProps { children: React.ReactNode; actionsRight?: React.ReactNode }
+type TabPaneElement = React.ReactElement<{ ['data-tab']?: string }>;
+function hasDataTab(el: unknown): el is TabPaneElement {
+  return React.isValidElement(el) && typeof (el.props as Record<string, unknown>)['data-tab'] === 'string';
+}
+function TabbedPanels({ children, actionsRight }: TabbedPanelsProps) {
+  const raw = React.Children.toArray(children);
+  const panes = raw.filter(hasDataTab);
+  const tabNames = panes.map(p => p.props['data-tab'] || 'Tab');
+  const [active, setActive] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('ds_active_tab');
+      if (stored && tabNames.includes(stored)) return stored;
+    }
+    return tabNames[0] || 'Tab';
+  });
+  // Ajustar si desaparece pestaña activa
+  React.useEffect(() => {
+    if (tabNames.length && !tabNames.includes(active)) setActive(tabNames[0]);
+  }, [active, tabNames]);
+  React.useEffect(() => {
+    try { localStorage.setItem('ds_active_tab', active); } catch { /* ignore */ }
+  }, [active]);
+  if (!panes.length) return null;
+  return (
+    <div className="tabs-wrapper">
+      <div className="tabs-nav" style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:'.75rem', flexWrap:'wrap' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:'.4rem', flexWrap:'wrap' }}>
+          {tabNames.map(tab => (
+            <button key={tab} type="button" className={`tab-btn ${tab === active ? 'active' : ''}`} onClick={() => setActive(tab)}>{tab}</button>
+          ))}
+        </div>
+        {actionsRight && (
+          <div className="tabs-actions" style={{ display:'flex', alignItems:'center', gap:'.5rem' }}>
+            {actionsRight}
+          </div>
+        )}
+      </div>
+      <div className="tabs-content">
+        {panes.filter(p => (p.props['data-tab'] || 'Tab') === active)}
+      </div>
+    </div>
+  );
 }
