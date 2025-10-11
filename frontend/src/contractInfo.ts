@@ -1,5 +1,5 @@
-// Dirección y ABI del contrato DonationSplitter para el frontend
-// Apunta a sepolia
+// DonationSplitter contract address & ABI for the frontend
+// Currently points to Sepolia network
 export const DONATION_SPLITTER_ADDRESS = "0x849E04a51573F61B33DeFA318fEDBF444240bAFb";
 
 export const DONATION_SPLITTER_ABI = [
@@ -88,6 +88,30 @@ export const DONATION_SPLITTER_ABI = [
   },
   {
     "inputs": [
+      { "internalType": "address", "name": "", "type": "address" }
+    ],
+    "name": "withdrawnEth",
+    "outputs": [
+      { "internalType": "uint256", "name": "", "type": "uint256" }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "address", "name": "account", "type": "address" }
+    ],
+    "name": "beneficiaryTotals",
+    "outputs": [
+      { "internalType": "uint256", "name": "pending", "type": "uint256" },
+      { "internalType": "uint256", "name": "withdrawn", "type": "uint256" },
+      { "internalType": "uint256", "name": "lifetime", "type": "uint256" }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
       {
         "components": [
           { "internalType": "address", "name": "account", "type": "address" },
@@ -111,4 +135,6 @@ export const DONATION_SPLITTER_ABI = [
     "type": "function"
   },
   { "stateMutability": "payable", "type": "receive" }
-];
+ ] as const;
+
+export type DonationSplitterAbi = typeof DONATION_SPLITTER_ABI;

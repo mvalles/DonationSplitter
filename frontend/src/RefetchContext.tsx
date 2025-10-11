@@ -1,4 +1,4 @@
-// React context para forzar refetch tras escribir en contrato
+// React context to force refetch after executing contract writes
 import { createContext, useContext, useState } from 'react';
 
 const RefetchContext = createContext<{ refetchKey: number; bump: () => void }>({ refetchKey: 0, bump: () => {} });
