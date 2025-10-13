@@ -3,6 +3,7 @@ import type { Chain } from 'viem';
 import { AddressChip } from '../shared/AddressComponents';
 import { makeAddressLink } from '../../utils/chainMeta';
 import { hasBlockscout } from '../../services/blockscout';
+import { useBlockscoutVerify } from '../../hooks/useBlockscoutVerify';
 
 interface WalletPanelProps {
   address: string | undefined;
@@ -32,6 +33,9 @@ export function WalletPanel({
     address: address as `0x${string}` | undefined,
     query: { enabled: !!address, refetchInterval: 5000 },
   });
+
+  const chainId = activeChain?.id || TARGET_CHAIN_ID;
+  const verified = useBlockscoutVerify(chainId, runtimeAddress);
 
   return (
     <div data-tab={rest['data-tab']} className="card wallet-panel">
@@ -80,8 +84,30 @@ export function WalletPanel({
                       address={runtimeAddress}
                       explorerHref={makeAddressLink(activeChain?.id || TARGET_CHAIN_ID, runtimeAddress)}
                     />
-                    {hasBlockscout(activeChain?.id || TARGET_CHAIN_ID) && (
-                      <span className="badge-unverified" style={{ fontSize:'.5rem', padding:'.28rem .5rem' }}>Unverified</span>
+                    {hasBlockscout(chainId) && (
+                      verified === undefined ? (
+                        <span className="badge-unverified" style={{ fontSize:'.5rem', padding:'.28rem .5rem', opacity:.7 }}>Verifying…</span>
+                      ) : verified ? (
+                        <span className="badge-verified" style={{
+                          fontSize: '.62rem',
+                          padding: '.3rem .7rem',
+                          minHeight: '1.6em',
+                          background: 'linear-gradient(90deg,#27ae60 60%,#43e97b 100%)',
+                          color: '#fff',
+                          borderRadius: '999px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '.35em',
+                          fontWeight: 700,
+                          letterSpacing: '.3px',
+                          boxShadow: '0 1px 4px 0 rgba(39,174,96,0.13)'
+                        }}>
+                          <svg width="13" height="13" viewBox="0 0 13 13" style={{ marginRight: '2px' }} aria-hidden="true"><circle cx="6.5" cy="6.5" r="6.5" fill="#27ae60"/><path d="M4.2 7.5l1.6 1.6 3-3" stroke="#fff" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" fill="none"/></svg>
+                          Verified
+                        </span>
+                      ) : (
+                        <span className="badge-unverified" style={{ fontSize:'.5rem', padding:'.28rem .5rem' }}>Unverified</span>
+                      )
                     )}
                     {activeChain && (
                       <span className={isMainnet ? 'badge badge-main' : 'badge badge-test'} style={{ padding:'.3rem .55rem' }}>

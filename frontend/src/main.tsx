@@ -27,14 +27,15 @@ const hardhatLocal: Chain = {
   },
 };
 
-// Build chains list dynamically; always include target + sepolia + mainnet for easy switching.
+
+// Usar el endpoint local solo para Hardhat, el resto (Sepolia, Mainnet) usan el RPC de la wallet/metamask
 const availableChains: Chain[] = [hardhatLocal, sepolia, mainnet];
 const chainSelection: Chain[] = availableChains;
-// (Could filter in future if we want minimal set)
 
 const transports: Record<number, ReturnType<typeof http>> = {};
 chainSelection.forEach(ch => {
-  if (ch.id === 31337) transports[ch.id] = http(hardhatRpc); else transports[ch.id] = http();
+  if (ch.id === 31337) transports[ch.id] = http(hardhatRpc);
+  else transports[ch.id] = http();
 });
 
 console.info('[DonationSplitter] Wagmi config chains:', chainSelection.map(c=>c.id+':'+c.name).join(', '), '| target:', TARGET_CHAIN_ID, TARGET_CHAIN_LABEL);

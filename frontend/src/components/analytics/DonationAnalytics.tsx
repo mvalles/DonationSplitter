@@ -7,7 +7,12 @@ interface DonationAnalyticsProps {
 }
 
 export function DonationAnalytics({ chainId, contractAddress }: DonationAnalyticsProps) {
-  const { stats, loading, error, refetch } = useBlockscoutData(chainId, contractAddress);
+  const { stats, loading, error } = useBlockscoutData(chainId, contractAddress);
+
+  // Proteger stats y calcular valores derivados
+  const donationsByWeek = stats?.donationsByWeek || [];
+  const maxWeeklyAmount = donationsByWeek.length > 0 ? Math.max(...donationsByWeek.map(w => w.amount)) : 0;
+  const averageWeeklyDonation = donationsByWeek.length > 0 ? donationsByWeek.reduce((sum, w) => sum + w.amount, 0) / donationsByWeek.length : 0;
 
   if (loading) {
     return (
@@ -26,7 +31,6 @@ export function DonationAnalytics({ chainId, contractAddress }: DonationAnalytic
 
   if (error) {
     const isContractNotFound = error.includes('Contract not found') || error.includes('analytics will be available');
-    
     return (
       <div style={{
         background: isContractNotFound 
@@ -46,120 +50,25 @@ export function DonationAnalytics({ chainId, contractAddress }: DonationAnalytic
           {isContractNotFound ? (
             <>
               <div style={{ fontWeight: 600, marginBottom: '.5rem' }}>Analytics Coming Soon</div>
-              <div style={{ fontSize: '.9rem', opacity: 0.7 }}>
-                Donation analytics will appear here after the first donation is received.
-                All data is pulled directly from the blockchain for complete transparency.
-              </div>
             </>
-          ) : (
-            <>Error loading analytics: {error}</>
-          )}
-        </div>
-        {!isContractNotFound && (
-          <button
-            onClick={refetch}
-            style={{
-              background: 'rgba(255,255,255,0.1)',
-              border: '1px solid rgba(255,255,255,0.2)',
-              borderRadius: 8,
-              color: '#fff',
-              padding: '.5rem 1rem',
-              cursor: 'pointer'
-            }}
-          >
-            Retry
-          </button>
-        )}
-      </div>
-    );
-  }
-
-  if (!stats) {
-    return (
-      <div style={{
-        background: 'linear-gradient(145deg, rgba(116, 185, 255, 0.1), rgba(116, 185, 255, 0.05))',
-        border: '1px solid rgba(116, 185, 255, 0.3)',
-        borderRadius: 16,
-        padding: '2rem',
-        textAlign: 'center'
-      }}>
-        <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>🔍</div>
-        <div style={{ color: 'rgba(255,255,255,0.8)' }}>
-          Blockscout Integration Ready
-          <br />
-          <small style={{ opacity: 0.6 }}>Analytics will appear when donations are detected</small>
+          ) : error}
         </div>
       </div>
     );
   }
 
-  const maxWeeklyAmount = Math.max(...stats.donationsByWeek.map(w => w.amount));
-  const averageWeeklyDonation = stats.donationsByWeek.length > 0 
-    ? stats.donationsByWeek.reduce((sum, w) => sum + w.amount, 0) / stats.donationsByWeek.length 
-    : 0;
-
+  // --- MAIN RENDER ---
   return (
-    <div style={{
-      background: 'linear-gradient(145deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01))',
-      border: '1px solid rgba(255,255,255,0.1)',
-      borderRadius: 16,
-      padding: '1.5rem',
-      marginBottom: '1.5rem'
-    }}>
-      {/* Header */}
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: '1.5rem'
-      }}>
-        <h3 style={{
-          margin: 0,
-          fontSize: '1.1rem',
-          fontWeight: 700,
-          color: 'rgba(255,255,255,0.9)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '.5rem'
-        }}>
-          ⚡ Donation Analytics
-          <span style={{
-            fontSize: '.6rem',
-            padding: '.2rem .5rem',
-            background: 'linear-gradient(90deg, #3498db, #74b9ff)',
-            color: '#fff',
-            borderRadius: 4,
-            fontWeight: 600
-          }}>
-            BLOCKSCOUT
-          </span>
-        </h3>
-        
-        <button
-          onClick={refetch}
-          style={{
-            background: 'rgba(255,255,255,0.1)',
-            border: '1px solid rgba(255,255,255,0.2)',
-            borderRadius: 6,
-            color: 'rgba(255,255,255,0.7)',
-            fontSize: '.7rem',
-            padding: '.4rem .8rem',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease'
-          }}
-          title="Refresh data from Blockscout"
-        >
-          🔄 Refresh
-        </button>
-      </div>
-
+    <>
       {/* Summary Stats */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
         gap: '1rem',
-        marginBottom: '2rem'
+        marginBottom: '2rem',
+        direction: 'ltr'
       }}>
+        {/* Total ETH Received */}
         <div style={{
           background: 'rgba(46, 204, 113, 0.1)',
           border: '1px solid rgba(46, 204, 113, 0.3)',
@@ -173,7 +82,7 @@ export function DonationAnalytics({ chainId, contractAddress }: DonationAnalytic
             color: '#2ecc71',
             marginBottom: '.3rem'
           }}>
-            {stats.totalReceived.toFixed(4)}
+            {stats ? stats.totalReceived.toFixed(4) : '-'}
           </div>
           <div style={{
             fontSize: '.7rem',
@@ -185,6 +94,33 @@ export function DonationAnalytics({ chainId, contractAddress }: DonationAnalytic
           </div>
         </div>
 
+        {/* Total Fees */}
+        <div style={{
+          background: 'rgba(241, 196, 15, 0.12)',
+          border: '1px solid rgba(241, 196, 15, 0.25)',
+          borderRadius: 12,
+          padding: '1rem',
+          textAlign: 'center'
+        }}>
+          <div style={{
+            fontSize: '1.5rem',
+            fontWeight: 700,
+            color: '#f1c40f',
+            marginBottom: '.3rem'
+          }}>
+            {stats ? stats.totalFeesEth.toFixed(5) : '-'}
+          </div>
+          <div style={{
+            fontSize: '.7rem',
+            color: 'rgba(255,255,255,0.6)',
+            textTransform: 'uppercase',
+            letterSpacing: '.5px'
+          }}>
+            Total Fees (ETH)
+          </div>
+        </div>
+
+        {/* Total Donations */}
         <div style={{
           background: 'rgba(52, 152, 219, 0.1)',
           border: '1px solid rgba(52, 152, 219, 0.3)',
@@ -198,7 +134,7 @@ export function DonationAnalytics({ chainId, contractAddress }: DonationAnalytic
             color: '#3498db',
             marginBottom: '.3rem'
           }}>
-            {stats.totalDonations}
+            {stats ? stats.totalDonations : '-'}
           </div>
           <div style={{
             fontSize: '.7rem',
@@ -210,6 +146,7 @@ export function DonationAnalytics({ chainId, contractAddress }: DonationAnalytic
           </div>
         </div>
 
+        {/* Avg Weekly Donation */}
         <div style={{
           background: 'rgba(155, 89, 182, 0.1)',
           border: '1px solid rgba(155, 89, 182, 0.3)',
@@ -237,7 +174,7 @@ export function DonationAnalytics({ chainId, contractAddress }: DonationAnalytic
       </div>
 
       {/* Weekly Donations Chart */}
-      {stats.donationsByWeek.length > 0 && (
+      {donationsByWeek.length > 0 && (
         <div style={{ marginBottom: '2rem' }}>
           <h4 style={{
             fontSize: '.9rem',
@@ -250,26 +187,24 @@ export function DonationAnalytics({ chainId, contractAddress }: DonationAnalytic
           }}>
             📈 Donations by Week
           </h4>
-          
           <div style={{
             background: 'rgba(0,0,0,0.2)',
             borderRadius: 12,
             padding: '1rem',
             border: '1px solid rgba(255,255,255,0.05)'
           }}>
-            {stats.donationsByWeek.map((week, index) => {
+            {donationsByWeek.map((week, index) => {
               const percentage = maxWeeklyAmount > 0 ? (week.amount / maxWeeklyAmount) * 100 : 0;
               const weekDate = new Date(week.week);
               const weekLabel = weekDate.toLocaleDateString('en-US', { 
                 month: 'short', 
                 day: 'numeric' 
               });
-              
               return (
                 <div key={week.week} style={{
                   display: 'flex',
                   alignItems: 'center',
-                  marginBottom: index < stats.donationsByWeek.length - 1 ? '.8rem' : 0,
+                  marginBottom: index < donationsByWeek.length - 1 ? '.8rem' : 0,
                   gap: '1rem'
                 }}>
                   <div style={{
@@ -279,7 +214,6 @@ export function DonationAnalytics({ chainId, contractAddress }: DonationAnalytic
                   }}>
                     {weekLabel}
                   </div>
-                  
                   <div style={{
                     flex: 1,
                     background: 'rgba(255,255,255,0.05)',
@@ -296,7 +230,6 @@ export function DonationAnalytics({ chainId, contractAddress }: DonationAnalytic
                       transition: 'width 0.5s ease'
                     }} />
                   </div>
-                  
                   <div style={{
                     minWidth: '80px',
                     textAlign: 'right',
@@ -319,7 +252,7 @@ export function DonationAnalytics({ chainId, contractAddress }: DonationAnalytic
       )}
 
       {/* Beneficiary Distribution */}
-      <div>
+  <div>
         <h4 style={{
           fontSize: '.9rem',
           fontWeight: 600,
@@ -339,9 +272,8 @@ export function DonationAnalytics({ chainId, contractAddress }: DonationAnalytic
         }}>
           {BENEFICIARIES.map((beneficiary) => {
             // Calculate actual distribution based on BPS
-            const beneficiaryShare = (stats.totalReceived * beneficiary.bps) / 10000;
+            const beneficiaryShare = stats ? (stats.totalReceived * beneficiary.bps) / 10000 : 0;
             const sharePercentage = (beneficiary.bps / 100).toFixed(2);
-            
             return (
               <div key={beneficiary.address} style={{
                 background: 'rgba(0,0,0,0.2)',
@@ -355,8 +287,10 @@ export function DonationAnalytics({ chainId, contractAddress }: DonationAnalytic
                   gap: '.5rem',
                   marginBottom: '.5rem'
                 }}>
-                  <div style={{ fontSize: '.8rem' }}>
-                    {beneficiary.logoId ? '🏛️' : (beneficiary.icon || '🎯')}
+                  <div style={{ fontSize: '.8rem', width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {beneficiary.logoSrc
+                      ? <img src={beneficiary.logoSrc} alt={beneficiary.label + ' logo'} style={{ width: 24, height: 24, objectFit: 'contain', borderRadius: 4, background: 'white' }} />
+                      : (beneficiary.icon || '🎯')}
                   </div>
                   <div style={{
                     fontSize: '.8rem',
@@ -365,28 +299,27 @@ export function DonationAnalytics({ chainId, contractAddress }: DonationAnalytic
                   }}>
                     {beneficiary.label}
                   </div>
-                  <div style={{
-                    fontSize: '.6rem',
-                    background: 'rgba(116, 185, 255, 0.2)',
-                    color: '#74b9ff',
-                    padding: '.2rem .4rem',
-                    borderRadius: 4,
-                    fontWeight: 600,
-                    marginLeft: 'auto'
-                  }}>
-                    {sharePercentage}%
-                  </div>
                 </div>
-                
                 <div style={{
+                  display: 'flex',
+                  alignItems: 'baseline',
+                  gap: '.5rem',
                   fontSize: '1.2rem',
                   fontWeight: 700,
                   color: '#2ecc71',
                   marginBottom: '.3rem'
                 }}>
-                  {beneficiaryShare.toFixed(4)} ETH
+                  <span>{beneficiaryShare.toFixed(4)} ETH</span>
+                  <span style={{
+                    fontSize: '.7rem',
+                    background: 'rgba(116, 185, 255, 0.2)',
+                    color: '#74b9ff',
+                    padding: '.15rem .35rem',
+                    borderRadius: 4,
+                    fontWeight: 600,
+                    marginLeft: '.2rem'
+                  }}>{sharePercentage}%</span>
                 </div>
-                
                 <div style={{
                   fontSize: '.6rem',
                   color: 'rgba(255,255,255,0.5)',
@@ -415,15 +348,15 @@ export function DonationAnalytics({ chainId, contractAddress }: DonationAnalytic
           fontWeight: 600,
           marginBottom: '.3rem'
         }}>
-          🔍 Transparencia Real, Auditable en Blockchain
+          🔍 True Transparency, Auditable on Blockchain
         </div>
         <div style={{
           fontSize: '.7rem',
           color: 'rgba(255,255,255,0.6)'
         }}>
-          Todos los datos verificables en tiempo real vía Blockscout
+          All data verifiable in real time via Blockscout
         </div>
       </div>
-    </div>
+    </>
   );
 }

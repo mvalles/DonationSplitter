@@ -16,8 +16,7 @@ export function BeneficiariesCard({ onAnalyticsClick, showAnalyticsButton }: Ben
   const { walletChainId, providerChainId, effectiveChainId } = useEffectiveChain();
   const chainInfo = walletChainId ? getChainInfo(walletChainId) : undefined;
   const walletEffectiveInfo = effectiveChainId ? getChainInfo(effectiveChainId) : undefined;
-  const { pendingPerBeneficiary, withdrawnPerBeneficiary, anyLoading, totalPending, totalWithdrawn } = useBeneficiaryFinancials();
-  const totalLifetime = totalPending + totalWithdrawn;
+  const { pendingPerBeneficiary, withdrawnPerBeneficiary, lifetimePerBeneficiary, anyLoading, totalPending, totalWithdrawn, totalLifetime } = useBeneficiaryFinancials();
   const [theme, setTheme] = useState<'dark'|'light'>(() => (localStorage.getItem('ds_theme') as 'dark'|'light') || 'dark');
   
   // Apply theme class on body
@@ -107,14 +106,14 @@ export function BeneficiariesCard({ onAnalyticsClick, showAnalyticsButton }: Ben
           const addrLink = makeAddressLink(chainInfo?.id || configuredId, b.address);
           const pendingVal = pendingPerBeneficiary[i];
           const withdrawnVal = withdrawnPerBeneficiary[i];
-          const lifetime = (pendingVal || 0n) + (withdrawnVal || 0n);
+          const lifetime = lifetimePerBeneficiary ? lifetimePerBeneficiary[i] : ((pendingVal || 0n) + (withdrawnVal || 0n));
           let withdrawnPct = 0;
           let pendingPct = 0;
-          if (lifetime > 0n) {
-            withdrawnPct = Number((withdrawnVal || 0n) * 10_000n / lifetime) / 100;
+          const hasActivity = typeof lifetime === 'bigint' && lifetime > 0n;
+          if (hasActivity) {
+            withdrawnPct = Number((withdrawnVal || 0n) * 10_000n / lifetime!) / 100;
             pendingPct = 100 - withdrawnPct;
           }
-          const hasActivity = lifetime > 0n;
           const tooltip = hasActivity
             ? `Withdrawn ${withdrawnVal ? (Number(withdrawnVal)/1e18).toFixed(4) : '0.0000'} ETH (${withdrawnPct.toFixed(2)}%)\nPending ${pendingVal ? (Number(pendingVal)/1e18).toFixed(4) : '0.0000'} ETH (${pendingPct.toFixed(2)}%)\nLifetime ${(Number(lifetime)/1e18).toFixed(4)} ETH`
             : 'No donations yet';
@@ -238,32 +237,37 @@ function useBeneficiaryFinancials() {
     args: [b.address] as const,
     chainId: CONFIG_TARGET_CHAIN_ID,
   }));
-  
+
   const { data, isLoading } = useReadContracts({
     contracts: contracts as unknown as readonly { address: `0x${string}`; abi: DonationSplitterAbi; functionName: 'beneficiaryTotals'; args: readonly [`0x${string}`]; }[],
     query: { refetchInterval:5000 }
   });
-  
+
   const pendingPerBeneficiary: (bigint|undefined)[] = [];
   const withdrawnPerBeneficiary: (bigint|undefined)[] = [];
-  
+  const lifetimePerBeneficiary: (bigint|undefined)[] = [];
+
   data?.forEach(res => {
     if (res?.result && Array.isArray(res.result)) {
       pendingPerBeneficiary.push(res.result[0] as bigint);
       withdrawnPerBeneficiary.push(res.result[1] as bigint);
+      lifetimePerBeneficiary.push(res.result[2] as bigint);
     } else {
-      pendingPerBeneficiary.push(undefined); 
+      pendingPerBeneficiary.push(undefined);
       withdrawnPerBeneficiary.push(undefined);
+      lifetimePerBeneficiary.push(undefined);
     }
   });
-  
-  while (pendingPerBeneficiary.length < BENEFICIARIES.length) { 
-    pendingPerBeneficiary.push(undefined); 
-    withdrawnPerBeneficiary.push(undefined); 
+
+  while (pendingPerBeneficiary.length < BENEFICIARIES.length) {
+    pendingPerBeneficiary.push(undefined);
+    withdrawnPerBeneficiary.push(undefined);
+    lifetimePerBeneficiary.push(undefined);
   }
-  
+
   const totalPending = pendingPerBeneficiary.reduce<bigint>((acc,v)=>acc+(v||0n),0n);
   const totalWithdrawn = withdrawnPerBeneficiary.reduce<bigint>((acc,v)=>acc+(v||0n),0n);
-  
-  return { pendingPerBeneficiary, withdrawnPerBeneficiary, anyLoading: isLoading, totalPending, totalWithdrawn };
+  const totalLifetime = lifetimePerBeneficiary.reduce<bigint>((acc,v)=>acc+(v||0n),0n);
+
+  return { pendingPerBeneficiary, withdrawnPerBeneficiary, lifetimePerBeneficiary, anyLoading: isLoading, totalPending, totalWithdrawn, totalLifetime };
 }

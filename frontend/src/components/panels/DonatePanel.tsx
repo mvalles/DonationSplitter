@@ -3,6 +3,7 @@ import { useBalance, usePublicClient } from 'wagmi';
 import type { Chain } from 'viem';
 import { DONATION_SPLITTER_ABI } from '../../config/contractInfo';
 import { BENEFICIARIES } from '../../config/beneficiaries';
+import { useDonateETH } from '../../hooks/contractWriteHooks';
 
 interface DonatePanelProps {
   address: string | undefined;
@@ -33,6 +34,7 @@ export function DonatePanel({
   TARGET_CHAIN_ID,
   setShowMainnetConfirm,
   showMainnetConfirm,
+  onDonationSuccess,
   // ...rest
 }: DonatePanelProps) {
   const [ethAmount, setEthAmount] = useState('');
@@ -45,7 +47,8 @@ export function DonatePanel({
   const [priceError, setPriceError] = useState(false);
 
   const publicClient = usePublicClient();
-  // const { donateETH } = useDonateETH();
+  // Hook para enviar donaciones
+  const { donateETH, isPending } = useDonateETH();
 
   // Read the user's wallet balance
   const { data: userBalance } = useBalance({
@@ -134,22 +137,26 @@ export function DonatePanel({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setDonateError(null);
-      try {
-        if (exceedsBalance) {
-          setDonateError('Amount exceeds wallet balance');
-          return;
-        }
-        if (isMainnet && !showMainnetConfirm) {
-          setShowMainnetConfirm(true);
-          return;
-        }
-        // if (!(role === 'owner' || role === 'donor' || role === 'beneficiary')) {
-        //   return;
-        // }
-        // TODO: Call donateETH or other donation logic here
-      } catch (err) {
-        setDonateError((err as Error).message);
+    try {
+      if (exceedsBalance) {
+        setDonateError('Amount exceeds wallet balance');
+        return;
       }
+      if (isMainnet && !showMainnetConfirm) {
+        setShowMainnetConfirm(true);
+        return;
+      }
+      if (!ethAmount || isNaN(numericAmount) || numericAmount <= 0) {
+        setDonateError('Enter a valid amount');
+        return;
+      }
+      const value = BigInt(Math.floor(numericAmount * 1e18));
+      await donateETH(value);
+      setEthAmount('');
+  if (typeof onDonationSuccess === 'function') onDonationSuccess();
+    } catch (err) {
+      setDonateError((err as Error).message);
+    }
   };
 
   return (
@@ -179,8 +186,8 @@ export function DonatePanel({
               <button type="button" className="btn ghost sm" style={{ fontSize:'.6rem', padding:'.55rem .75rem', minHeight:'42px', display:'inline-flex', alignItems:'center' }} onClick={fillMax} disabled={!walletEth || walletEth <= gasBufferEth}>
                 Max
               </button>
-              <button className="btn donate-compact" type="submit" disabled={exceedsBalance || mismatch || (ready && !providerAvailable)} style={{ padding:'.55rem 1.0rem', fontSize:'.78rem', fontWeight:600, whiteSpace:'nowrap', opacity: exceedsBalance ? .55 : 1, minHeight:'42px', display:'inline-flex', alignItems:'center' }}>
-                Donate
+              <button className="btn donate-compact" type="submit" disabled={exceedsBalance || mismatch || (ready && !providerAvailable) || isPending} style={{ padding:'.55rem 1.0rem', fontSize:'.78rem', fontWeight:600, whiteSpace:'nowrap', opacity: exceedsBalance ? .55 : 1, minHeight:'42px', display:'inline-flex', alignItems:'center' }}>
+                {isPending ? 'Donating…' : 'Donate'}
               </button>
             </div>
           </form>

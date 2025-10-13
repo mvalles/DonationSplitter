@@ -14,6 +14,8 @@ interface BlockscoutTransaction {
   };
   status: string;
   method?: string;
+  gas_used?: string;
+  gas_price?: string;
 }
 
 interface DonationStats {
@@ -21,6 +23,7 @@ interface DonationStats {
   totalDonations: number;
   donationsByWeek: { week: string; amount: number; count: number }[];
   recentDonations: { hash: string; amount: number; timestamp: string; from: string }[];
+  totalFeesEth: number;
 }
 
 interface UseBlockscoutDataResult {
@@ -135,11 +138,19 @@ export function useBlockscoutData(chainId: number, contractAddress: string): Use
         }
       });
 
+      // Calcular fees totales (ETH) de todas las transacciones
+      const totalFeesEth = transactions.reduce((sum, tx) => {
+        const gasUsed = tx.gas_used ? Number(tx.gas_used) : 0;
+        const gasPrice = tx.gas_price ? Number(tx.gas_price) : 0;
+        return sum + (gasUsed * gasPrice) / 1e18;
+      }, 0);
+
       setStats({
         totalReceived,
         totalDonations: donations.length,
         donationsByWeek,
-        recentDonations
+        recentDonations,
+        totalFeesEth
       });
 
     } catch (err) {

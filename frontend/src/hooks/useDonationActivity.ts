@@ -64,9 +64,12 @@ export function useDonationActivity({ limit = 50, pollMs = 15000, chainId }: Opt
       const merged: DonationActivityItem[] = [];
       for (const log of logs) {
         if (!log.decoded) continue;
-        if (log.decoded.name === 'DonationRecorded') {
-          const donor = log.decoded.params.find((p: any) => p.name === 'donor')?.value;
-          const amount = BigInt(log.decoded.params.find((p: any) => p.name === 'amount')?.value || '0');
+        // Blockscout v2: method_call/parameters; fallback a name/params
+        const name = log.decoded.name || (typeof log.decoded.method_call === 'string' ? log.decoded.method_call.split('(')[0] : undefined);
+        const params = log.decoded.params || log.decoded.parameters;
+        if (name === 'DonationRecorded') {
+          const donor = params?.find((p: any) => p.name === 'donor')?.value;
+          const amount = BigInt(params?.find((p: any) => p.name === 'amount')?.value || '0');
           merged.push({
             id: log.transaction_hash + ':' + log.log_index,
             type: 'donate',
@@ -78,9 +81,9 @@ export function useDonationActivity({ limit = 50, pollMs = 15000, chainId }: Opt
             logIndex: Number(log.log_index),
             timestamp: log.block_timestamp ? Math.floor(new Date(log.block_timestamp).getTime() / 1000) : undefined
           });
-        } else if (log.decoded.name === 'Withdrawn') {
-          const beneficiary = log.decoded.params.find((p: any) => p.name === 'beneficiary')?.value;
-          const amount = BigInt(log.decoded.params.find((p: any) => p.name === 'amount')?.value || '0');
+        } else if (name === 'Withdrawn') {
+          const beneficiary = params?.find((p: any) => p.name === 'beneficiary')?.value;
+          const amount = BigInt(params?.find((p: any) => p.name === 'amount')?.value || '0');
           merged.push({
             id: log.transaction_hash + ':' + log.log_index,
             type: 'withdraw',
