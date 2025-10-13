@@ -3,7 +3,7 @@ import { useReadContracts } from 'wagmi';
 import { BENEFICIARIES, beneficiariesTotalBps, formatPercent } from '../../config/beneficiaries';
 import { TARGET_CHAIN_ID as CONFIG_TARGET_CHAIN_ID, getDonationSplitterAddress, DONATION_SPLITTER_ABI, type DonationSplitterAbi } from '../../config/contractInfo';
 import { useEffectiveChain } from '../../hooks/useEffectiveChain';
-import { getChainInfo, makeAddressLink } from '../../utils/chainMeta';
+import { getChainInfo, makeAddressLink } from '../../services/blockscout';
 import { OrgLogo } from '../ui/orgLogos';
 
 interface BeneficiariesCardProps {
@@ -178,7 +178,7 @@ export function BeneficiariesCard({ onAnalyticsClick, showAnalyticsButton }: Ben
                   {hasActivity && (
                     <div style={{ position:'absolute', inset:0, display:'flex', width:'100%' }}>
                       <div style={{ width: (withdrawnPct>0 && withdrawnPct<1 ? 1 : withdrawnPct) + '%', background:'linear-gradient(90deg,#2e7dd1,#4aa8ff)', transition:'width .6s ease' }} />
-                      <div style={{ width: (pendingPct>0 && pendingPct<1 ? 1 : pendingPct) + '%', background:'linear-gradient(90deg,#f39c12,#f1c40f)', transition:'width .6s ease' }} />
+                      <div style={{ width: (pendingPct>0 && pendingPct<1 ? 1 : pendingPct) + '%', background:'linear-gradient(90deg,#c97a10,#e67e22)', transition:'width .6s ease' }} />
                     </div>
                   )}
                   {!hasActivity && (

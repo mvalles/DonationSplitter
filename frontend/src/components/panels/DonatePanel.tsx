@@ -201,12 +201,15 @@ export function DonatePanel({
                 </span>
               </div>
               {(() => {
-                let bg = 'linear-gradient(90deg,#2ecc71,#27ae60)';
+                // Fondo neutro para la barra completa
+                const barBg = 'rgba(220,230,220,0.35)';
+                // Verde brillante para el porcentaje usado
+                let bg = 'linear-gradient(90deg,#43e97b 0%,#38f9d7 100%)';
                 if (pctUsage >= THRESH_WARN && pctUsage < THRESH_DANGER) bg = 'linear-gradient(90deg,#f1c40f,#f39c12)';
                 if (pctUsage >= THRESH_DANGER) bg = 'linear-gradient(90deg,#e74c3c,#c0392b)';
                 const width = Math.min(100, pctUsage);
                 return (
-                  <div style={{ position:'relative', height:6, background:bg, borderRadius:4, overflow:'hidden', boxShadow:'0 0 0 1px rgba(255,255,255,0.08) inset' }} aria-label={`Using ${pctUsage.toFixed(2)}% of wallet balance`} title={`Est. gas ${(gasCostEth).toFixed(6)} ETH${ethUsd ? ' ($' + (gasCostEth*ethUsd).toFixed(4) + ')' : ''} · Máx seguro ~${effectiveMaxSendEth.toFixed(6)} ETH${ethUsd ? ' ($' + (effectiveMaxSendEth*ethUsd).toFixed(2) + ')' : ''}`}>
+                  <div style={{ position:'relative', height:6, background:barBg, borderRadius:4, overflow:'hidden', boxShadow:'0 0 0 1px rgba(255,255,255,0.08) inset' }} aria-label={`Using ${pctUsage.toFixed(2)}% of wallet balance`} title={`Est. gas ${(gasCostEth).toFixed(6)} ETH${ethUsd ? ' ($' + (gasCostEth*ethUsd).toFixed(4) + ')' : ''} · Máx seguro ~${effectiveMaxSendEth.toFixed(6)} ETH${ethUsd ? ' ($' + (effectiveMaxSendEth*ethUsd).toFixed(2) + ')' : ''}`}>
                     <div style={{ position:'absolute', inset:0, width: width + '%', background:bg, transition:'width .35s ease' }} />
                     {exceedsBalance && (
                       <div style={{ position:'absolute', inset:0, background:'repeating-linear-gradient(45deg,rgba(255,0,0,0.55) 0 6px, rgba(255,0,0,0.15) 6px 12px)', mixBlendMode:'screen' }} />

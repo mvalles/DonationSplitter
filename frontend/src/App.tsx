@@ -197,18 +197,20 @@ function App() {
                 setShowMainnetConfirm={setShowMainnetConfirm}
                 showMainnetConfirm={showMainnetConfirm}
               />
-              <WithdrawPanel
-                data-tab="Withdraw"
-                address={address}
-                runtimeAddress={runtimeAddress}
-                activeChainId={activeChain?.id || TARGET_CHAIN_ID}
-                TARGET_CHAIN_ID={TARGET_CHAIN_ID}
-                role={role}
-                isBeneficiary={isBeneficiary}
-                isConnected={isConnected}
-                mismatch={mismatch}
-                onWithdrawSuccess={() => bump()}
-              />
+              {role === 'beneficiary' && (
+                <WithdrawPanel
+                  data-tab="Withdraw"
+                  address={address}
+                  runtimeAddress={runtimeAddress}
+                  activeChainId={activeChain?.id || TARGET_CHAIN_ID}
+                  TARGET_CHAIN_ID={TARGET_CHAIN_ID}
+                  role={role}
+                  isBeneficiary={isBeneficiary}
+                  isConnected={isConnected}
+                  mismatch={mismatch}
+                  onWithdrawSuccess={() => bump()}
+                />
+              )}
               <ActivityPanel
                 data-tab="Activity"
                 chainId={TARGET_CHAIN_ID}

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { blockscoutContractLogsUrl } from '../services/blockscout';
 import { usePublicClient } from 'wagmi';
 import { DONATION_SPLITTER_ABI, getDonationSplitterAddress, TARGET_CHAIN_ID as CONFIG_TARGET_CHAIN_ID } from '../config/contractInfo';
 import type { AbiEvent } from 'viem';
@@ -38,7 +39,7 @@ export function useDonationActivity({ limit = 50, pollMs = 15000, chainId }: Opt
   const [error, setError] = useState<string | null>(null);
   const blockCache = useRef<Map<bigint, number>>(new Map());
   // Siempre usamos una ventana “tail” desde el último bloque hacia atrás (evita perder logs en mismo bloque y simplifica)
-  const windowSizeRef = useRef<bigint>(8_192n); // < 10000 para free tier
+  const windowSizeRef = useRef<bigint>(50_000n); // ventana inicial aumentada para producción
   const MIN_WINDOW = 500n;
 
   const fetchAll = useCallback(async (opts?: { silent?: boolean }) => {
@@ -50,88 +51,50 @@ export function useDonationActivity({ limit = 50, pollMs = 15000, chainId }: Opt
     if (!opts?.silent) setLoading(true);
     if (!opts?.silent) setError(null);
     try {
-      const latest = await publicClient.getBlockNumber();
-  const span = windowSizeRef.current;
-  const fromBlock = latest > span ? latest - span : 0n;
-      const toBlock = latest;
-      const eventDonation = DONATION_SPLITTER_ABI.find(e => e.type==='event' && e.name===DONATION_RECORDED_EVENT) as AbiEvent;
-      const eventWithdraw = DONATION_SPLITTER_ABI.find(e => e.type==='event' && e.name===WITHDRAWN_EVENT) as AbiEvent;
-      interface LogLite { transactionHash: string; logIndex: number | bigint; blockNumber: bigint; data: `0x${string}`; topics: readonly `0x${string}`[] }
-      let donationLogs: LogLite[] = [];
-      let withdrawnLogs: LogLite[] = [];
-      try {
-        donationLogs = await publicClient.getLogs({ address, event: eventDonation, fromBlock, toBlock });
-        withdrawnLogs = await publicClient.getLogs({ address, event: eventWithdraw, fromBlock, toBlock });
-      } catch (e) {
-        const msg = (e as Error).message || '';
-        if (msg.includes('10000') && windowSizeRef.current > MIN_WINDOW) {
-          // Backoff: reducimos ventana y reintentamos una vez
-            windowSizeRef.current = windowSizeRef.current / 2n;
-            setLoading(false);
-            return fetchAll();
+      // Siempre usar la URL base de logs de Blockscout (sin paginación)
+      const logsUrl = blockscoutContractLogsUrl(runtimeChainId, address);
+  // console.log('[Blockscout] Fetching logs URL:', logsUrl);
+      if (!logsUrl) throw new Error('Blockscout API URL not available for this chain');
+      const res = await fetch(logsUrl);
+  // console.log('[Blockscout] Response status:', res.status);
+      if (!res.ok) throw new Error('Blockscout API error: ' + res.status);
+      const data = await res.json();
+      const logs = data.items || [];
+  // console.log('[Blockscout] Logs received:', logs.length, logs);
+      const merged: DonationActivityItem[] = [];
+      for (const log of logs) {
+        if (!log.decoded) continue;
+        if (log.decoded.name === 'DonationRecorded') {
+          const donor = log.decoded.params.find((p: any) => p.name === 'donor')?.value;
+          const amount = BigInt(log.decoded.params.find((p: any) => p.name === 'amount')?.value || '0');
+          merged.push({
+            id: log.transaction_hash + ':' + log.log_index,
+            type: 'donate',
+            txHash: log.transaction_hash,
+            address: donor,
+            amountWei: amount,
+            amountEth: Number(amount) / 1e18,
+            blockNumber: BigInt(log.block_number),
+            logIndex: Number(log.log_index),
+            timestamp: log.block_timestamp ? Math.floor(new Date(log.block_timestamp).getTime() / 1000) : undefined
+          });
+        } else if (log.decoded.name === 'Withdrawn') {
+          const beneficiary = log.decoded.params.find((p: any) => p.name === 'beneficiary')?.value;
+          const amount = BigInt(log.decoded.params.find((p: any) => p.name === 'amount')?.value || '0');
+          merged.push({
+            id: log.transaction_hash + ':' + log.log_index,
+            type: 'withdraw',
+            txHash: log.transaction_hash,
+            address: beneficiary,
+            amountWei: amount,
+            amountEth: Number(amount) / 1e18,
+            blockNumber: BigInt(log.block_number),
+            logIndex: Number(log.log_index),
+            timestamp: log.block_timestamp ? Math.floor(new Date(log.block_timestamp).getTime() / 1000) : undefined
+          });
         }
-        throw e;
       }
-  const merged: DonationActivityItem[] = [];
-      function pushLog(l: LogLite, type: 'donate' | 'withdraw') {
-        try {
-          const topicsArr = l.topics as unknown as [`0x${string}`, ...`0x${string}`[]];
-          const decoded = decodeEventLog({ abi: DONATION_SPLITTER_ABI, data: l.data as `0x${string}`, topics: topicsArr });
-          if (type === 'donate') {
-            const raw = decoded.args as unknown;
-            let donor: string; let amount: bigint;
-            const isObjDonation = (val: unknown): val is { donor: string; amount: bigint } => {
-              return !!val && typeof val === 'object' && 'donor' in (val as Record<string, unknown>) && 'amount' in (val as Record<string, unknown>);
-            };
-            if (Array.isArray(raw)) {
-              donor = raw[0] as string;
-              amount = raw[1] as bigint;
-            } else if (isObjDonation(raw)) {
-              donor = raw.donor;
-              amount = raw.amount;
-            } else {
-              return; // forma inesperada
-            }
-            merged.push({
-              id: l.transactionHash + ':' + l.logIndex,
-              type,
-              txHash: l.transactionHash,
-              address: donor,
-              amountWei: amount,
-              amountEth: Number(amount) / 1e18,
-              blockNumber: l.blockNumber,
-              logIndex: Number(l.logIndex)
-            });
-          } else {
-            const rawW = decoded.args as unknown;
-            let beneficiary: string; let amount: bigint;
-            const isObjWithdraw = (val: unknown): val is { beneficiary: string; amount: bigint } => {
-              return !!val && typeof val === 'object' && 'beneficiary' in (val as Record<string, unknown>) && 'amount' in (val as Record<string, unknown>);
-            };
-            if (Array.isArray(rawW)) {
-              beneficiary = rawW[0] as string;
-              amount = rawW[1] as bigint;
-            } else if (isObjWithdraw(rawW)) {
-              beneficiary = rawW.beneficiary;
-              amount = rawW.amount;
-            } else {
-              return; // forma inesperada
-            }
-            merged.push({
-              id: l.transactionHash + ':' + l.logIndex,
-              type,
-              txHash: l.transactionHash,
-              address: beneficiary,
-              amountWei: amount,
-              amountEth: Number(amount) / 1e18,
-              blockNumber: l.blockNumber,
-              logIndex: Number(l.logIndex)
-            });
-          }
-        } catch {/* ignore decode errors */}
-      }
-      donationLogs.forEach(l => pushLog(l, 'donate'));
-      withdrawnLogs.forEach(l => pushLog(l, 'withdraw'));
+      // Deduplicar y ordenar
       const byId = new Map<string, DonationActivityItem>();
       for (const it of merged) if (!byId.has(it.id)) byId.set(it.id, it);
       const dedup = Array.from(byId.values());
@@ -163,6 +126,7 @@ export function useDonationActivity({ limit = 50, pollMs = 15000, chainId }: Opt
       setHasMoreState(!fullyExhaustedRef.current);
     } catch (err) {
       setError((err as Error).message);
+  // console.error('[Blockscout] Error fetching logs:', err);
     } finally {
       if (!opts?.silent) setLoading(false);
     }

@@ -35,6 +35,10 @@ export function ActivityPanel({ chainId, ...rest }: ActivityPanelProps) {
       <div style={{ display:'flex', flexDirection:'column', gap:'0.9rem' }}>
         <div className="card-header-row" style={{ alignItems:'flex-start' }}>
           <h2 style={{ margin:0 }}>Activity</h2>
+          {/* DEBUG: Mostrar número de items y filtered */}
+          <div style={{ fontSize:'.6rem', color:'#888', marginLeft:8 }}>
+            items: {items.length} | filtered: {filtered.length} | total: {total}
+          </div>
           <div className="activity-filters">
             <div className="segmented">
               {(['all','donate','withdraw'] as const).map(t => (

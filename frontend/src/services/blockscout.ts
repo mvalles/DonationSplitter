@@ -1,14 +1,48 @@
 // Simple Blockscout URL helpers. Extendable para más redes.
 // Si una red no tiene Blockscout público conocido, se puede hacer fallback al explorador ya existente.
 
-const BLOCKSCOUT_BASES: Record<number, string> = {
-  11155111: 'https://eth-sepolia.blockscout.com',
-  1: 'https://eth.blockscout.com', // Puede no estar público; ajustar según despliegue real
-  31337: 'http://localhost:4000' // Placeholder si montas un Blockscout local
+
+export interface ChainInfo {
+  id: number;
+  name: string;
+  blockscoutBase: string;
+  testnet: boolean;
+}
+
+const CHAINS: Record<number, ChainInfo> = {
+  31337: {
+    id: 31337,
+    name: 'Hardhat Local',
+    blockscoutBase: 'http://localhost:4000',
+    testnet: true,
+  },
+  11155111: {
+    id: 11155111,
+    name: 'Sepolia',
+    blockscoutBase: 'https://eth-sepolia.blockscout.com',
+    testnet: true,
+  },
+  1: {
+    id: 1,
+    name: 'Ethereum Mainnet',
+    blockscoutBase: 'https://eth.blockscout.com', // Puede no estar público; ajustar según despliegue real
+    testnet: false,
+  }
 };
 
+// Helper para compatibilidad con componentes existentes
+export function makeAddressLink(chainId: number, address: string) {
+  return blockscoutAddressUrl(chainId, address) || '#';
+}
+
+export function getChainInfo(chainId?: number): ChainInfo | undefined {
+  if (!chainId) return undefined;
+  return CHAINS[chainId];
+}
+
+
 export function blockscoutBase(chainId: number): string | undefined {
-  return BLOCKSCOUT_BASES[chainId];
+  return getChainInfo(chainId)?.blockscoutBase;
 }
 
 export function blockscoutTxUrl(chainId: number, txHash?: string | null): string | undefined {
