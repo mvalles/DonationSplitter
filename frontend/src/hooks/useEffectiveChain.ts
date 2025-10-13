@@ -1,6 +1,6 @@
 import { useChainId, useAccount } from 'wagmi';
 import { useEffect, useRef, useState } from 'react';
-import { TARGET_CHAIN_ID } from '../contractInfo';
+import { TARGET_CHAIN_ID } from '../config/contractInfo';
 
 export interface EffectiveChainState {
   walletChainId?: number;        // wagmi hook chain id

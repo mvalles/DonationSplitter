@@ -3,12 +3,12 @@
 import { WagmiProvider, createConfig, http } from 'wagmi';
 import { mainnet, sepolia } from 'wagmi/chains';
 import type { Chain } from 'viem';
-import { TARGET_CHAIN_ID, TARGET_CHAIN_LABEL } from './contractInfo';
+import { TARGET_CHAIN_ID, TARGET_CHAIN_LABEL } from './config/contractInfo';
 import { metaMask } from 'wagmi/connectors';
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
-import { RefetchProvider } from './RefetchContext';
+import { RefetchProvider } from './context/RefetchContext';
 import './index.css';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 

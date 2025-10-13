@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { usePublicClient } from 'wagmi';
-import { DONATION_SPLITTER_ABI, getDonationSplitterAddress, TARGET_CHAIN_ID as CONFIG_TARGET_CHAIN_ID } from './contractInfo';
+import { DONATION_SPLITTER_ABI, getDonationSplitterAddress, TARGET_CHAIN_ID as CONFIG_TARGET_CHAIN_ID } from '../config/contractInfo';
 import type { AbiEvent } from 'viem';
 import { decodeEventLog } from 'viem';
 

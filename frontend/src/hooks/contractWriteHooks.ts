@@ -1,5 +1,5 @@
 // wagmi v2 helper for contract write
-import { DONATION_SPLITTER_ADDRESS, DONATION_SPLITTER_ABI } from './contractInfo';
+import { DONATION_SPLITTER_ADDRESS, DONATION_SPLITTER_ABI } from '../config/contractInfo';
 import { useWriteContract } from 'wagmi';
 
 export function useDonateETH() {

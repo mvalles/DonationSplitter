@@ -2,17 +2,18 @@ import './App.css';
 import { useAccount, useReadContract, useBalance, useChainId, useChains, useReadContracts, useConnect, useDisconnect } from 'wagmi';
 import type { Chain } from 'viem';
 import { metaMask } from 'wagmi/connectors';
-import { useDonateETH, useWithdrawETH } from './contractWriteHooks';
-import { useRefetchKey } from './RefetchContext';
-import { DONATION_SPLITTER_ABI, type DonationSplitterAbi, getDonationSplitterAddress, TARGET_CHAIN_ID as CONFIG_TARGET_CHAIN_ID, TARGET_CHAIN_LABEL } from './contractInfo';
+import { useDonateETH, useWithdrawETH } from './hooks/contractWriteHooks';
+import { useRefetchKey } from './context/RefetchContext';
+import { DONATION_SPLITTER_ABI, type DonationSplitterAbi, getDonationSplitterAddress, TARGET_CHAIN_ID as CONFIG_TARGET_CHAIN_ID, TARGET_CHAIN_LABEL } from './config/contractInfo';
 import { useEffectiveChain } from './hooks/useEffectiveChain';
-import DonationSplitArt from './DonationSplitArt';
+import DonationSplitArt from './components/DonationSplitArt';
 import React, { useState, useEffect } from 'react';
 import { usePublicClient } from 'wagmi';
-import { blockscoutTxUrl, blockscoutAddressUrl, hasBlockscout } from './blockscout';
-import { BENEFICIARIES, beneficiariesTotalBps, formatPercent } from './beneficiaries';
-import { getChainInfo, makeAddressLink } from './chainMeta';
-import { OrgLogo } from './orgLogos';
+import { blockscoutTxUrl, blockscoutAddressUrl, hasBlockscout } from './services/blockscout';
+import { BENEFICIARIES, beneficiariesTotalBps, formatPercent } from './config/beneficiaries';
+import { getChainInfo, makeAddressLink } from './utils/chainMeta';
+import { OrgLogo } from './components/orgLogos';
+import { DonationAnalytics } from './components/DonationAnalytics';
 
 
 
@@ -29,9 +30,10 @@ function App() {
   const TARGET_CHAIN_ID = CONFIG_TARGET_CHAIN_ID;
   const [donateError, setDonateError] = useState<string | null>(null);
   const [withdrawError, setWithdrawError] = useState<string | null>(null);
-  const [lastDonateTx, setLastDonateTx] = useState<string | null>(null);
+
   const [lastWithdrawTx, setLastWithdrawTx] = useState<string | null>(null);
   const [howOpen, setHowOpen] = useState(false);
+  const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const publicClient = usePublicClient();
   const [gasEstimating, setGasEstimating] = useState(false);
   const [estGasUnits, setEstGasUnits] = useState<number|undefined>();
@@ -69,12 +71,7 @@ function App() {
       args: address ? [address] : undefined,
       query: { enabled: isConnected && !mismatch, refetchInterval: 5000 },
     });
-    // Read total contract balance
-    const { data: contractBalance } = useBalance({
-      address: runtimeAddress,
-      // periodic refetch to keep fresh data
-      query: { enabled: true, refetchInterval: 5000 },
-    });
+
     // Read the user's wallet balance
     const { data: userBalance } = useBalance({
       address: address,
@@ -258,7 +255,6 @@ function App() {
                     const value = ethAmount && !isNaN(Number(ethAmount)) ? BigInt(Math.floor(Number(ethAmount.toString()) * 1e18)) : undefined;
                     if (!value) throw new Error('Invalid amount');
                     const tx = await donateETH(value);
-                    setLastDonateTx(tx);
                     setEthAmount('');
                     bump();
                     if (refetch) refetch();
@@ -276,7 +272,10 @@ function App() {
         )}
         {!isConnected && (
           <div className="card beneficiaries-card" style={{ marginBottom: '1.5rem' }}>
-            <BeneficiariesCard />
+            <BeneficiariesCard 
+              onAnalyticsClick={() => setAnalyticsOpen(true)}
+              showAnalyticsButton={hasBlockscout(TARGET_CHAIN_ID)}
+            />
             <div style={{ marginTop:'.7rem', fontSize:'.6rem', background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.12)', padding:'.5rem .65rem', borderRadius:'8px', lineHeight:1.3, color:'var(--text-secondary)' }}>
               Public dashboard mode: connect only if you intend to donate or simulate. Aggregated metrics (pending / withdrawn / lifetime) refresh near real-time from on-chain state.
             </div>
@@ -298,12 +297,16 @@ function App() {
         )}
         {isConnected && (
           <div className="card beneficiaries-card" style={{ marginBottom: '1.5rem' }}>
-            <BeneficiariesCard />
+            <BeneficiariesCard 
+              onAnalyticsClick={() => setAnalyticsOpen(true)}
+              showAnalyticsButton={hasBlockscout(activeChain?.id || TARGET_CHAIN_ID)}
+            />
           </div>
         )}
+        
         {isConnected && (
           <TabbedPanels>
-            <div data-tab="Wallet" className="card wallet-panel">
+            <div data-tab="Wallet | Contract" className="card wallet-panel">
               <div className="card-header-row" style={{ alignItems:'flex-start' }}>
                 <h2 style={{ margin:0 }}>Wallet</h2>
               </div>
@@ -401,7 +404,6 @@ function App() {
                     const value = ethAmount && !isNaN(Number(ethAmount)) ? BigInt(Math.floor(Number(ethAmount.toString()) * 1e18)) : undefined;
                     if (!value) throw new Error('Invalid amount');
                     const tx = await donateETH(value);
-                    setLastDonateTx(tx);
                     setEthAmount('');
                     bump();
                     if (refetch) refetch();
@@ -623,6 +625,20 @@ function App() {
             </div>
           </div>
         )}
+        {analyticsOpen && (
+          <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.6)', zIndex:1600, display:'flex', alignItems:'center', justifyContent:'center', padding:'1rem' }} role="dialog" aria-modal="true" aria-label="Donation Analytics">
+            <div className="card" style={{ maxWidth:'min(95vw, 1000px)', maxHeight:'85vh', overflow:'auto', gap:'.9rem', width:'100%' }}>
+              <div className="card-header-row">
+                <h2 style={{ margin:0 }}>⚡ Analytics</h2>
+                <button type="button" className="btn ghost sm" onClick={()=>setAnalyticsOpen(false)}>Close</button>
+              </div>
+              <DonationAnalytics 
+                chainId={activeChain?.id || TARGET_CHAIN_ID}
+                contractAddress={runtimeAddress}
+              />
+            </div>
+          </div>
+        )}
       </section>
       <footer className="app-footer">DonationSplitter · Experimental UI · {new Date().getFullYear()}</footer>
     </div>
@@ -650,7 +666,12 @@ function HowItWorksBody() {
 }
 
 // Beneficiaries list card
-function BeneficiariesCard() {
+interface BeneficiariesCardProps {
+  onAnalyticsClick?: () => void;
+  showAnalyticsButton?: boolean;
+}
+
+function BeneficiariesCard({ onAnalyticsClick, showAnalyticsButton }: BeneficiariesCardProps = {}) {
   const total = beneficiariesTotalBps();
   // Use shared effective chain hook (eliminates duplicated provider chain listener logic)
   const { walletChainId, providerChainId, effectiveChainId } = useEffectiveChain();
@@ -699,6 +720,12 @@ function BeneficiariesCard() {
             <button type="button" className="btn ghost sm" style={{ fontSize:'.55rem', letterSpacing:'.5px', marginLeft:'.4rem' }}
               onClick={() => { const next = theme === 'dark' ? 'light' : 'dark'; setTheme(next); localStorage.setItem('ds_theme', next); }}
             >Theme: {theme === 'dark' ? 'Dark' : 'Light'}</button>
+            {showAnalyticsButton && (
+              <button type="button" className="btn primary" style={{ fontSize:'.7rem', padding:'.7rem 1.15rem', fontWeight:600 }}
+                onClick={onAnalyticsClick}
+                title="View donation analytics from blockchain data"
+              >⚡ Analytics</button>
+            )}
           </div>
         </div>
         {/* Line 2: Legend + stats + theme (aligned to left, normal card padding) */}
@@ -998,7 +1025,7 @@ function TabbedPanels({ children, actionsRight }: TabbedPanelsProps) {
 }
 
 // Activity Panel
-import { useDonationActivity } from './useDonationActivity';
+import { useDonationActivity } from './hooks/useDonationActivity';
 
 interface ActivityPanelProps { chainId: number }
 function ActivityPanel({ chainId }: ActivityPanelProps) {
