@@ -1,5 +1,5 @@
-import { useBlockscoutData } from '../hooks/useBlockscoutData';
-import { BENEFICIARIES } from '../config/beneficiaries';
+import { useBlockscoutData } from '../../hooks/useBlockscoutData';
+import { BENEFICIARIES } from '../../config/beneficiaries';
 
 interface DonationAnalyticsProps {
   chainId: number;

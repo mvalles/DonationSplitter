@@ -24,7 +24,7 @@ export const BENEFICIARIES: BeneficiaryInfo[] = [
     ,url: 'https://www.unicef.org'
   },
   {
-    label: 'MSF / Doctors Without Borders',
+    label: 'Doctors Without Borders',
     //address: '0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc', // hardhat node
     address: '0x7104a74226c1B11A978e4aDd70348859AEd2E091',   // Sepolia
     bps: 2000,
