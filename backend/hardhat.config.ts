@@ -4,7 +4,7 @@ import hardhatToolboxViemPlugin from "@nomicfoundation/hardhat-toolbox-viem";
 import { configVariable } from "hardhat/config";
 import "@nomicfoundation/hardhat-verify";
 
-const ETHERSCAN_API_KEY = process.env.BLOCKSCOUT_API_KEY || process.env.ETHERSCAN_API_KEY || "";
+const ETHERSCAN_API_KEY = configVariable("ETHERSCAN_API_KEY");
 
 const config: HardhatUserConfig = {
   plugins: [hardhatToolboxViemPlugin],
@@ -41,16 +41,18 @@ const config: HardhatUserConfig = {
     },
   },
   etherscan: {
-    apiKey: {
-      sepolia: process.env.BLOCKSCOUT_API_KEY || process.env.ETHERSCAN_API_KEY || "blockscout",
-    },
+    apiKey: ETHERSCAN_API_KEY,
     customChains: [
       {
         network: "sepolia",
         chainId: 11155111,
         urls: {
-          apiURL: "https://eth-sepolia.blockscout.com/api",
-          browserURL: "https://eth-sepolia.blockscout.com",
+          // Blockscout endpoints (comentados)
+          // apiURL: "https://eth-sepolia.blockscout.com/api",
+          // browserURL: "https://eth-sepolia.blockscout.com",
+          // Etherscan endpoints (activos)
+          apiURL: "https://api-sepolia.etherscan.io/api",
+          browserURL: "https://sepolia.etherscan.io",
         },
       },
     ],
