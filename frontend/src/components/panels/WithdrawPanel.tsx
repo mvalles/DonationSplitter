@@ -41,6 +41,7 @@ export function WithdrawPanel({
     abi: DONATION_SPLITTER_ABI,
     functionName: 'pendingEth',
     args: address ? [address as `0x${string}`] : undefined,
+    chainId: activeChainId,
     query: { enabled: isConnected && !mismatch, refetchInterval: 5000 },
   });
 

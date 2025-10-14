@@ -96,6 +96,7 @@ export function DonatePanel({
           address: runtimeAddress as `0x${string}`,
           abi: DONATION_SPLITTER_ABI,
           functionName: 'donateETH',
+          args: [''], // Se debe pasar un string como uri temporal o real
           value: valueWei,
           account: address as `0x${string}` | undefined,
         }).catch(()=>undefined);
@@ -151,7 +152,7 @@ export function DonatePanel({
         return;
       }
       const value = BigInt(Math.floor(numericAmount * 1e18));
-      await donateETH(value);
+  await donateETH('', value);
       setEthAmount('');
   if (typeof onDonationSuccess === 'function') onDonationSuccess();
     } catch (err) {

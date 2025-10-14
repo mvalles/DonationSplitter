@@ -208,7 +208,13 @@ export const DONATION_SPLITTER_ABI = [
       "type": "function"
     },
     {
-      "inputs": [],
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "uri",
+          "type": "string"
+        }
+      ],
       "name": "donateETH",
       "outputs": [],
       "stateMutability": "payable",

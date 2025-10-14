@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { useReadContracts } from 'wagmi';
 import { BENEFICIARIES, beneficiariesTotalBps, formatPercent } from '../../config/beneficiaries';
-import { TARGET_CHAIN_ID as CONFIG_TARGET_CHAIN_ID, getDonationSplitterAddress, DONATION_SPLITTER_ABI, type DonationSplitterAbi } from '../../config/contractInfo';
+import { getDonationSplitterAddress, DONATION_SPLITTER_ABI, type DonationSplitterAbi } from '../../config/contractInfo';
 import { useEffectiveChain } from '../../hooks/useEffectiveChain';
 import { getChainInfo, makeAddressLink } from '../../services/blockscout';
 import { OrgLogo } from '../ui/orgLogos';
-
+import { TARGET_CHAIN_ID } from '../../config/contractInfo';
 interface BeneficiariesCardProps {
   onAnalyticsClick?: () => void;
   showAnalyticsButton?: boolean;
@@ -16,7 +16,9 @@ export function BeneficiariesCard({ onAnalyticsClick, showAnalyticsButton }: Ben
   const { walletChainId, providerChainId, effectiveChainId } = useEffectiveChain();
   const chainInfo = walletChainId ? getChainInfo(walletChainId) : undefined;
   const walletEffectiveInfo = effectiveChainId ? getChainInfo(effectiveChainId) : undefined;
-  const { pendingPerBeneficiary, withdrawnPerBeneficiary, lifetimePerBeneficiary, anyLoading, totalPending, totalWithdrawn, totalLifetime } = useBeneficiaryFinancials();
+  // Usa la red activa y dirección de contrato dinámica
+  const runtimeAddress = effectiveChainId ? getDonationSplitterAddress(effectiveChainId) : getDonationSplitterAddress();
+  const { pendingPerBeneficiary, withdrawnPerBeneficiary, lifetimePerBeneficiary, anyLoading, totalPending, totalWithdrawn, totalLifetime } = useBeneficiaryFinancials(effectiveChainId, runtimeAddress);
   const [theme, setTheme] = useState<'dark'|'light'>(() => (localStorage.getItem('ds_theme') as 'dark'|'light') || 'dark');
   
   // Apply theme class on body
@@ -33,8 +35,8 @@ export function BeneficiariesCard({ onAnalyticsClick, showAnalyticsButton }: Ben
   
   // Configured target (from env) for display when no wallet is connected
   const configuredNameMap: Record<number,string> = { 31337:'Hardhat Local', 11155111:'Sepolia', 1:'Ethereum Mainnet' };
-  const configuredId: number = typeof CONFIG_TARGET_CHAIN_ID !== 'undefined'
-    ? CONFIG_TARGET_CHAIN_ID
+  const configuredId: number = typeof TARGET_CHAIN_ID !== 'undefined'
+    ? TARGET_CHAIN_ID
     : (() => {
         const rawVal = (import.meta as unknown as { env?: Record<string, unknown> })?.env?.VITE_TARGET_CHAIN || '';
         const raw = String(rawVal).trim().toLowerCase();
@@ -228,14 +230,14 @@ export function BeneficiariesCard({ onAnalyticsClick, showAnalyticsButton }: Ben
 }
 
 // Custom hook using beneficiaryTotals() via batched reads
-function useBeneficiaryFinancials() {
-  const runtimeAddress = getDonationSplitterAddress(CONFIG_TARGET_CHAIN_ID);
+
+function useBeneficiaryFinancials(chainId?: number, runtimeAddress?: `0x${string}`) {
   const contracts = BENEFICIARIES.map(b => ({
     address: runtimeAddress,
     abi: DONATION_SPLITTER_ABI,
     functionName: 'beneficiaryTotals',
     args: [b.address] as const,
-    chainId: CONFIG_TARGET_CHAIN_ID,
+    chainId,
   }));
 
   const { data, isLoading } = useReadContracts({

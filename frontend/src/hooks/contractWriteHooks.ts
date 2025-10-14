@@ -4,11 +4,12 @@ import { useWriteContract } from 'wagmi';
 
 export function useDonateETH() {
   const { writeContractAsync, isPending, error, data } = useWriteContract();
-  async function donateETH(value: bigint) {
+  async function donateETH(uri: string, value: bigint) {
     return await writeContractAsync({
       address: DONATION_SPLITTER_ADDRESS,
       abi: DONATION_SPLITTER_ABI,
       functionName: 'donateETH',
+      args: [uri],
       value,
     });
   }

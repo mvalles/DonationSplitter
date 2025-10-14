@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useAccount, useReadContract, useChainId, useChains } from 'wagmi';
 import type { Chain } from 'viem';
 import { useDonateETH } from './hooks/contractWriteHooks';
+import { useLitEncryptDonorData } from './hooks/useLitEncryptDonorData';
 import { useRefetchKey } from './context/RefetchContext';
 import { 
   DONATION_SPLITTER_ABI, 
@@ -93,6 +94,7 @@ function App() {
   // Hooks for refetching
   const { bump } = useRefetchKey();
   const { donateETH } = useDonateETH();
+  const litEncryptDonorData = useLitEncryptDonorData();
 
   // Handle successful donation
   const handleDonationSuccess = () => {
@@ -108,8 +110,15 @@ function App() {
     try {
       const value = ethAmount && !isNaN(Number(ethAmount)) ? BigInt(Math.floor(Number(ethAmount.toString()) * 1e18)) : undefined;
       if (!value) throw new Error('Invalid amount');
-      
-      const tx = await donateETH(value);
+
+  // --- LIT ENCRYPTION (usando hook) ---
+  if (!ownerAddress) throw new Error('Owner address not loaded');
+  // Usa el nombre de la red activa o el chainId como fallback
+  const networkName = activeChain?.name || activeChain?.id?.toString() || 'unknown';
+  const litPayload = await litEncryptDonorData(address || '', ownerAddress, networkName);
+
+  // Llama a donateETH pasando el valor y el payload como URI temporal (en producción, subirías a Irys y pasarías el URI real)
+  const tx = await donateETH(litPayload, value);
       setEthAmount('');
       handleDonationSuccess();
       console.log('Donation TX sent:', tx);
