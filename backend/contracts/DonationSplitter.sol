@@ -18,7 +18,7 @@ contract DonationSplitter {
     // Total historical withdrawn ETH per beneficiary
     mapping(address => uint256) public withdrawnEth;
 
-    event DonationRecorded(address indexed donor, uint256 amount, uint256 timestamp);
+    event DonationMade(string uri, uint256 amount, uint256 timestamp);
     event BeneficiariesUpdated(uint256 count, uint256 totalBps);
     event Withdrawn(address indexed beneficiary, uint256 amount);
 
@@ -38,11 +38,11 @@ contract DonationSplitter {
 
     // --- Donations ---
 
-    /// @notice Donate ETH (distributes into pending balances according to BPS)
-    function donateETH() public payable {
+    /// @notice Donate ETH (distributes into pending balances according to BPS) with privacy-preserving URI
+    function donateETH(string calldata uri) external payable {
         require(msg.value > 0, "No ETH sent");
         _splitEth(msg.value);
-        emit DonationRecorded(msg.sender, msg.value, block.timestamp);
+        emit DonationMade(uri, msg.value, block.timestamp);
     }
 
     // --- Withdrawals ---
@@ -120,8 +120,8 @@ contract DonationSplitter {
         return total;
     }
 
-    // Receive plain ETH directly (counts as a donation)
+    // Receive plain ETH directly is disabled for privacy: must call donate(uri)
     receive() external payable {
-        donateETH();
+        revert("Use donate(uri)");
     }
 }

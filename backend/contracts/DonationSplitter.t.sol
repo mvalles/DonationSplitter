@@ -21,7 +21,7 @@ contract DonationSplitterTest is Test {
     function testDonateAndWithdraw() public {
         // Donar 1 ether
         vm.deal(address(this), 1 ether);
-        splitter.donateETH{value: 1 ether}();
+        splitter.donateETH{value: 1 ether}("test://uri");
         // Alice y Bob tienen pendientes
         assertEq(splitter.pendingEth(alice), 0.6 ether);
         assertEq(splitter.pendingEth(bob), 0.4 ether);
@@ -52,17 +52,11 @@ contract DonationSplitterTest is Test {
         splitter.withdrawETH();
     }
 
-    function testReceiveFallback() public {
-        vm.deal(address(this), 2 ether);
-        (bool ok, ) = address(splitter).call{value: 2 ether}("");
-        require(ok, "send failed");
-        assertEq(splitter.pendingEth(alice), 1.2 ether);
-        assertEq(splitter.pendingEth(bob), 0.8 ether);
-    }
+
 
     function testWithdrawnEthAndTotals() public {
         vm.deal(address(this), 1 ether);
-        splitter.donateETH{value: 1 ether}();
+        splitter.donateETH{value: 1 ether}("test://uri");
         // Antes de retirar
         (uint256 pendingA, uint256 withdrawnA, uint256 lifetimeA) = splitter.beneficiaryTotals(alice);
         assertEq(pendingA, 0.6 ether);
@@ -80,7 +74,7 @@ contract DonationSplitterTest is Test {
 
     function testWithdrawEvent() public {
         vm.deal(address(this), 1 ether);
-        splitter.donateETH{value: 1 ether}();
+        splitter.donateETH{value: 1 ether}("test://uri");
         vm.prank(alice);
         vm.expectEmit(true, false, false, true);
         emit DonationSplitter.Withdrawn(alice, 0.6 ether);
@@ -97,7 +91,7 @@ contract DonationSplitterTest is Test {
         vm.prank(owner);
         splitter.setBeneficiaries(arr);
         vm.deal(address(this), 1 wei * 1000); // 1000 wei para evidenciar residuo
-        splitter.donateETH{value: 1000}();
+        splitter.donateETH{value: 1000}("test://uri");
         // Calculos teóricos:
         // share0 = floor(1000 * 3333 / 10000) = 333
         // share1 = floor(1000 * 3333 / 10000) = 333
