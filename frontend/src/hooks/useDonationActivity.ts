@@ -15,6 +15,7 @@ export interface DonationActivityItem {
   blockNumber: bigint;
   logIndex: number;
   timestamp?: number; // epoch seconds
+  uri?: string; // Irys upload id
 }
 
 interface Options { limit?: number; pollMs?: number; chainId?: number }
@@ -67,19 +68,21 @@ export function useDonationActivity({ limit = 50, pollMs = 15000, chainId }: Opt
         // Blockscout v2: method_call/parameters; fallback a name/params
         const name = log.decoded.name || (typeof log.decoded.method_call === 'string' ? log.decoded.method_call.split('(')[0] : undefined);
         const params = log.decoded.params || log.decoded.parameters;
-        if (name === 'DonationRecorded') {
-          const donor = params?.find((p: any) => p.name === 'donor')?.value;
+        if (name === 'DonationMade') {
+          // uri, amount, timestamp
+          const uri = params?.find((p: any) => p.name === 'uri')?.value;
           const amount = BigInt(params?.find((p: any) => p.name === 'amount')?.value || '0');
           merged.push({
             id: log.transaction_hash + ':' + log.log_index,
             type: 'donate',
             txHash: log.transaction_hash,
-            address: donor,
+            address: log.from_address || '',
             amountWei: amount,
             amountEth: Number(amount) / 1e18,
             blockNumber: BigInt(log.block_number),
             logIndex: Number(log.log_index),
-            timestamp: log.block_timestamp ? Math.floor(new Date(log.block_timestamp).getTime() / 1000) : undefined
+            timestamp: log.block_timestamp ? Math.floor(new Date(log.block_timestamp).getTime() / 1000) : undefined,
+            uri
           });
         } else if (name === 'Withdrawn') {
           const beneficiary = params?.find((p: any) => p.name === 'beneficiary')?.value;
@@ -174,22 +177,22 @@ export function useDonationActivity({ limit = 50, pollMs = 15000, chainId }: Opt
       function pushLog(l: LogLite, type: 'donate' | 'withdraw') {
         try {
           const topicsArr = l.topics as unknown as [`0x${string}`, ...`0x${string}`[]];
-          const decoded = decodeEventLog({ abi: DONATION_SPLITTER_ABI, data: l.data as `0x${string}`, topics: topicsArr });
+          const decoded = decodeEventLog({ abi: DONATION_SPLITTER_ABI, data: l.data as `0x${string}`, topics: topicsArr }) as any;
           if (type === 'donate') {
-            const raw = decoded.args as unknown;
+            const raw = decoded.args as any;
             let donor: string; let amount: bigint;
-            const isObjDonation = (val: unknown): val is { donor: string; amount: bigint } => {
-              return !!val && typeof val === 'object' && 'donor' in (val as Record<string, unknown>) && 'amount' in (val as Record<string, unknown>);
+            const isObjDonation = (val: any): val is { donor: string; amount: bigint } => {
+              return !!val && typeof val === 'object' && 'donor' in val && 'amount' in val;
             };
             if (Array.isArray(raw)) { donor = raw[0] as string; amount = raw[1] as bigint; }
             else if (isObjDonation(raw)) { donor = raw.donor; amount = raw.amount; }
             else return;
             merged.push({ id: l.transactionHash+':'+l.logIndex, type, txHash: l.transactionHash, address: donor, amountWei: amount, amountEth: Number(amount)/1e18, blockNumber: l.blockNumber, logIndex: Number(l.logIndex) });
           } else {
-            const rawW = decoded.args as unknown;
+            const rawW = decoded.args as any;
             let beneficiary: string; let amount: bigint;
-            const isObjWithdraw = (val: unknown): val is { beneficiary: string; amount: bigint } => {
-              return !!val && typeof val === 'object' && 'beneficiary' in (val as Record<string, unknown>) && 'amount' in (val as Record<string, unknown>);
+            const isObjWithdraw = (val: any): val is { beneficiary: string; amount: bigint } => {
+              return !!val && typeof val === 'object' && 'beneficiary' in val && 'amount' in val;
             };
             if (Array.isArray(rawW)) { beneficiary = rawW[0] as string; amount = rawW[1] as bigint; }
             else if (isObjWithdraw(rawW)) { beneficiary = rawW.beneficiary; amount = rawW.amount; }

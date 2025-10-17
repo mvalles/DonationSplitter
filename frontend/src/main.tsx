@@ -1,4 +1,9 @@
 
+// Polyfill para Buffer (necesario para lit-js-sdk y dependencias de Node.js en navegador)
+import { Buffer } from 'buffer';
+// @ts-ignore
+if (typeof window !== 'undefined') window.Buffer = Buffer;
+
 
 import { WagmiProvider, createConfig, http } from 'wagmi';
 import { mainnet, sepolia } from 'wagmi/chains';

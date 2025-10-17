@@ -116,6 +116,8 @@ export function ActivityPanel({ chainId, ...rest }: ActivityPanelProps) {
             const explorer = blockscoutTxUrl(chainId, ev.txHash);
             const addrExplorer = blockscoutAddressUrl(chainId, ev.address);
             const roleLabel = ev.type === 'donate' ? 'DONOR' : 'BENEFICIARY';
+            // Si el evento tiene uri (Irys), construir enlace
+            const irysUrl = (ev as any).uri ? `https://gateway.irys.xyz/${(ev as any).uri}` : null;
             return (
               <div
                 key={ev.id}
@@ -149,7 +151,11 @@ export function ActivityPanel({ chainId, ...rest }: ActivityPanelProps) {
                     {ev.address.slice(0,6)}...{ev.address.slice(-4)}
                   </span>
                 )}
-                {explorer ? (
+                {irysUrl ? (
+                  <a href={irysUrl} target="_blank" rel="noopener noreferrer" className="tx-link mono" style={{ textDecoration:'none', color:'#ffb300', fontWeight:600 }}>
+                    Irys ↗
+                  </a>
+                ) : explorer ? (
                   <a href={explorer} target="_blank" rel="noopener noreferrer" className="tx-link mono" style={{ textDecoration:'none', color:'var(--accent-alt)' }}>
                     {ev.txHash.slice(0,6)}...{ev.txHash.slice(-4)} ↗
                   </a>

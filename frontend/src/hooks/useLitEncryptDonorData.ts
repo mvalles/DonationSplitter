@@ -1,50 +1,83 @@
-
+// src/hooks/useLitEncryptDonorData.ts
 import { useCallback } from 'react';
-import { LitNodeClient } from '@lit-protocol/lit-node-client';
-import { LIT_NETWORK } from '@lit-protocol/constants';
 
-// Mapeo simple de nombre de red a LIT_NETWORKS_KEYS válidos en esta versión
-const networkToLitNetwork = (network: string) => {
-  switch (network?.toLowerCase()) {
-    case 'sepolia':
-    case 'mumbai':
-    case 'polygon':
-    case 'goerli':
-      return LIT_NETWORK.DatilTest;
-    case 'ethereum':
-    case 'mainnet':
-      return LIT_NETWORK.Datil;
-    default:
-      return LIT_NETWORK.DatilTest;
-  }
-};
+const getAccessControlConditions = (contractAddress: string, ownerAddress: string) => [
+  {
+    contractAddress,
+    standardContractType: '',
+    chain: 'ethereum',
+    method: 'owner',
+    parameters: [],
+    returnValueTest: { comparator: '=', value: ownerAddress },
+  },
+];
 
-export function useLitEncryptDonorData() {
-  // Retorna una función que cifra datos con Lit Protocol
-  return useCallback(async (data: string, ownerAddress: string, network: string = 'sepolia') => {
-    const litNetwork = networkToLitNetwork(network);
-    const litClient = new LitNodeClient({ litNetwork });
-    await litClient.connect();
-    const accessControlConditions = [
-      {
-        contractAddress: '',
-        standardContractType: '',
-        chain: network,
-        method: 'eth_getBalance',
-        parameters: [ownerAddress, 'latest'],
-        returnValueTest: { comparator: '>=', value: '0' },
-      },
-    ];
-    // NOTA: La API de cifrado puede variar según la versión, aquí se asume encryptString y saveEncryptionKey existen
-    // Si no existen, se debe consultar la doc oficial de lit-protocol v7
-  // @ts-expect-error La API encryptString no está tipada en esta versión
-  const { encryptedString, symmetricKey } = await litClient.encryptString(data);
-  // @ts-expect-error La API saveEncryptionKey no está tipada en esta versión
-  const encryptedSymmetricKey = await litClient.saveEncryptionKey({
-      accessControlConditions,
-      symmetricKey,
-      chain: network,
+export function useLitEncryptDonorData(contractAddress: string, ownerAddress: string) {
+  return useCallback(async (donorData: string) => {
+    console.log('[LitEncrypt] Starting encryption flow...');
+    console.log('[LitEncrypt] donorData (string):', donorData, typeof donorData);
+
+    // 1️⃣ Generar clave simétrica AES-GCM
+    const key = await window.crypto.subtle.generateKey(
+      { name: 'AES-GCM', length: 256 },
+      true,
+      ['encrypt', 'decrypt']
+    );
+    console.log('[LitEncrypt] Symmetric key generated');
+
+    // 2️⃣ Cifrar los datos
+    const enc = new TextEncoder();
+    const data = enc.encode(donorData);
+    const iv = window.crypto.getRandomValues(new Uint8Array(12));
+    const ciphertextBuffer = await window.crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, data);
+    const ciphertext = `${Buffer.from(iv).toString('base64')}:${Buffer.from(new Uint8Array(ciphertextBuffer)).toString('base64')}`;
+    console.log('[LitEncrypt] Data encrypted, ciphertext length:', ciphertext.length);
+
+    // 3️⃣ Exportar clave simétrica
+    const exportedKey = await window.crypto.subtle.exportKey('raw', key);
+    console.log('[LitEncrypt] Symmetric key exported, length:', exportedKey.byteLength);
+
+    // 4️⃣ Calcular hash SHA-256
+    const hashBuffer = await window.crypto.subtle.digest('SHA-256', data);
+    const dataToEncryptHash = Array.from(new Uint8Array(hashBuffer))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+    console.log('[LitEncrypt] Data hash computed:', dataToEncryptHash);
+
+    // 5️⃣ ACCs
+    const accessControlConditions = getAccessControlConditions(contractAddress, ownerAddress);
+    console.log('[LitEncrypt] Access control conditions:', accessControlConditions);
+
+    // 6️⃣ Subir al backend
+    console.log('[LitEncrypt] Sending payload to /api/irys-upload...');
+    const res = await fetch('/api/irys-upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ciphertext,
+        symmetricKey: Array.from(new Uint8Array(exportedKey)),
+        accessControlConditions,
+        dataToEncryptHash,
+        contractAddress,
+        ownerAddress,
+      }),
     });
-    return JSON.stringify({ ciphertext: encryptedString, encryptedSymmetricKey: Array.from(new Uint8Array(encryptedSymmetricKey)), accessControlConditions });
-  }, []);
+
+    console.log('[LitEncrypt] Upload response status:', res.status);
+
+    if (!res.ok) {
+      const text = await res.text();
+      console.error('[LitEncrypt] Upload failed:', text);
+      throw new Error(`Error uploading to Irys: ${text}`);
+    }
+
+    const { uri } = await res.json();
+    console.log('[LitEncrypt] Upload successful, URI:', uri);
+
+    return {
+      ciphertext,
+      accessControlConditions,
+      uri,
+    };
+  }, [contractAddress, ownerAddress]);
 }

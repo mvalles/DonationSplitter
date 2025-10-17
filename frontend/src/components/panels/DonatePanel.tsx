@@ -4,6 +4,9 @@ import type { Chain } from 'viem';
 import { DONATION_SPLITTER_ABI } from '../../config/contractInfo';
 import { BENEFICIARIES } from '../../config/beneficiaries';
 import { useDonateETH } from '../../hooks/contractWriteHooks';
+import { useLitEncryptDonorData } from '../../hooks/useLitEncryptDonorData';
+import { DONATION_SPLITTER_ADDRESS } from '../../config/contractInfo';
+
 
 interface DonatePanelProps {
   address: string | undefined;
@@ -14,13 +17,11 @@ interface DonatePanelProps {
   ready: boolean;
   providerAvailable: boolean;
   isMainnet: boolean;
-  role: 'owner' | 'beneficiary' | 'donor' | 'unauth';
-  TARGET_CHAIN_ID: number;
-  TARGET_CHAIN_LABEL: string;
   onDonationSuccess: () => void;
   setShowMainnetConfirm: (show: boolean) => void;
   showMainnetConfirm: boolean;
-  [key: string]: unknown; // allow data-tab
+  ownerAddress: string; // NUEVO: dirección del owner
+  [key: string]: unknown;
 }
 
 export function DonatePanel({
@@ -31,45 +32,34 @@ export function DonatePanel({
   ready,
   providerAvailable,
   isMainnet,
-  TARGET_CHAIN_ID,
   setShowMainnetConfirm,
   showMainnetConfirm,
   onDonationSuccess,
-  // ...rest
+  ownerAddress,
 }: DonatePanelProps) {
   const [ethAmount, setEthAmount] = useState('');
   const [donateError, setDonateError] = useState<string | null>(null);
-  const [howOpen, setHowOpen] = useState(false);
-  const [gasEstimating, setGasEstimating] = useState(false);
   const [estGasUnits, setEstGasUnits] = useState<number|undefined>();
   const [gasPriceWei, setGasPriceWei] = useState<bigint|undefined>();
   const [ethUsd, setEthUsd] = useState<number|undefined>();
-  const [priceError, setPriceError] = useState(false);
-
   const publicClient = usePublicClient();
-  // Hook para enviar donaciones
   const { donateETH, isPending } = useDonateETH();
-
-  // Read the user's wallet balance
+  // Usar ownerAddress recibido por prop
+  const encryptDonorDataWithLit = useLitEncryptDonorData(DONATION_SPLITTER_ADDRESS, ownerAddress);
   const { data: userBalance } = useBalance({
     address: address as `0x${string}` | undefined,
     query: { enabled: !!address, refetchInterval: 5000 },
   });
-
-  // Derivados después de tener userBalance
   const numericAmount = Number(ethAmount);
   const walletEth = userBalance ? Number(userBalance.value) / 1e18 : 0;
-  const THRESH_WARN = 50; // %
-  const THRESH_DANGER = 80; // %
   const gasBufferEth = 0.0005;
-  const fallbackGasUnits = 55_000;
+  const fallbackGasUnits = 55000;
   const fallbackGasPriceGwei = 5;
   const usedGasUnits = estGasUnits ?? fallbackGasUnits;
   const gasPriceGwei = gasPriceWei ? Number(gasPriceWei) / 1e9 : fallbackGasPriceGwei;
   const gasCostEth = (usedGasUnits * gasPriceGwei) / 1e9 / 1e9;
   const effectiveMaxSendEth = walletEth > gasCostEth ? walletEth - gasCostEth : 0;
   const exceedsBalance = !!ethAmount && !isNaN(numericAmount) && numericAmount > walletEth + 1e-18;
-  const pctUsage = walletEth > 0 && !isNaN(numericAmount) ? (numericAmount / walletEth) * 100 : 0;
 
   function fillMax() {
     if (!walletEth || walletEth <= gasBufferEth) return;
@@ -82,7 +72,7 @@ export function DonatePanel({
     let cancelled = false;
     async function run() {
       if (!publicClient || !runtimeAddress) return;
-      setGasEstimating(true); 
+
       setDonateError(null);
       try {
         const gp = await publicClient.getGasPrice();
@@ -96,7 +86,7 @@ export function DonatePanel({
           address: runtimeAddress as `0x${string}`,
           abi: DONATION_SPLITTER_ABI,
           functionName: 'donateETH',
-          args: [''], // Se debe pasar un string como uri temporal o real
+          args: [""], // argumento dummy para cumplir el tipado, ajustar si el contrato requiere otro
           value: valueWei,
           account: address as `0x${string}` | undefined,
         }).catch(()=>undefined);
@@ -105,7 +95,7 @@ export function DonatePanel({
       } catch (err) {
         if (!cancelled) setDonateError((err as Error).message);
       } finally {
-        if (!cancelled) setGasEstimating(false);
+  // eliminado setGasEstimating
       }
     }
     run();
@@ -122,12 +112,9 @@ export function DonatePanel({
         const v = json?.ethereum?.usd;
         if (typeof v === 'number') { 
           setEthUsd(v); 
-          setPriceError(false); 
-        } else { 
-          setPriceError(true); 
         }
       } catch { 
-        if (!cancelled) setPriceError(true); 
+        // Silenciar error de precio USD
       }
     }
     load();
@@ -151,172 +138,117 @@ export function DonatePanel({
         setDonateError('Enter a valid amount');
         return;
       }
+      // --- Flujo Lit+Irys: cifrar y subir antes de donar ---
+  const donorData = JSON.stringify({ donor: address, amount: ethAmount, timestamp: Date.now() });
+  // Solo pasar string, nunca binario
+  console.log('[DonatePanel] Donor data to encrypt (string):', donorData, typeof donorData);
+  const encryptedResult = await encryptDonorDataWithLit(donorData);
+  console.log('[DonatePanel] Encrypted result from Lit+Irys:', encryptedResult);
+  const { uri } = encryptedResult;
+      // Llamada original a donateETH, ahora con el uri
       const value = BigInt(Math.floor(numericAmount * 1e18));
-  await donateETH('', value);
+      console.log('[DonatePanel] Calling donateETH with:', { uri, value });
+      await donateETH(uri, value);
       setEthAmount('');
-  if (typeof onDonationSuccess === 'function') onDonationSuccess();
+      if (typeof onDonationSuccess === 'function') onDonationSuccess();
     } catch (err) {
+      console.error('[DonatePanel] Error in donation flow:', err);
       setDonateError((err as Error).message);
     }
   };
 
+  // Cálculo USD
+  const amountUsd = ethAmount && !isNaN(numericAmount) && ethUsd ? (numericAmount * ethUsd).toFixed(2) : '0.00';
   return (
-    <div>
-      {/* ...existing JSX content... */}
-          <form className="donate-form inline-layout" onSubmit={handleSubmit}>
-            <div className="donate-input-wrap">
-              <input
-                type="number"
-                min="0"
-                step="any"
-                placeholder="Amount in ETH"
-                value={ethAmount}
-                onChange={e => setEthAmount(e.target.value)}
-                required
-                style={{ width:'100%' }}
-              />
-            </div>
-            <div className="donate-actions" style={{ display:'flex', gap:'.45rem', alignItems:'stretch', flexWrap:'wrap' }}>
-              <div style={{ display:'flex', alignItems:'center', background:'rgba(255,255,255,0.07)', border:'1px solid rgba(255,255,255,0.22)', padding:'.55rem .75rem', borderRadius:8, fontSize:'.68rem', fontFamily:'JetBrains Mono, monospace', fontWeight:500, letterSpacing:'.5px', boxShadow:'0 1px 2px rgba(0,0,0,0.35), 0 0 0 1px rgba(255,255,255,0.04) inset', minHeight:'42px' }} title={ethUsd ? 'Conversión aproximada USD' : 'Esperando precio USD'}>
-                {ethAmount && !isNaN(numericAmount) && numericAmount>0 && ethUsd ? (
-                  '≈ $' + (numericAmount*ethUsd).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2})
-                ) : (
-                  <span style={{ opacity:.4 }}>≈ $0.00</span>
-                )}
-              </div>
-              <button type="button" className="btn ghost sm" style={{ fontSize:'.6rem', padding:'.55rem .75rem', minHeight:'42px', display:'inline-flex', alignItems:'center' }} onClick={fillMax} disabled={!walletEth || walletEth <= gasBufferEth}>
-                Max
-              </button>
-              <button className="btn donate-compact" type="submit" disabled={exceedsBalance || mismatch || (ready && !providerAvailable) || isPending} style={{ padding:'.55rem 1.0rem', fontSize:'.78rem', fontWeight:600, whiteSpace:'nowrap', opacity: exceedsBalance ? .55 : 1, minHeight:'42px', display:'inline-flex', alignItems:'center' }}>
-                {isPending ? 'Donating…' : 'Donate'}
-              </button>
-            </div>
-          </form>
-
-          {priceError && (
-            <div style={{ marginTop:'.35rem', fontSize:'.5rem', opacity:.6 }}>
-              USD feed no disponible (testnet / rate limit). Solo se muestra ETH.
-            </div>
-          )}
-
-          {/* Barra de progreso de uso del balance */}
-          {walletEth > 0 && ethAmount && !isNaN(numericAmount) && (
-            <div style={{ marginTop:'.45rem' }}>
-              <div style={{ display:'flex', justifyContent:'space-between', fontSize:'.5rem', letterSpacing:'.4px', marginBottom:'.25rem' }}>
-                <span>Usage: {pctUsage.toFixed(2)}%</span>
-                <span style={{ opacity:.7 }} title={`Gas est. ~${usedGasUnits.toLocaleString()} u${gasPriceWei ? ' · gasPrice ' + gasPriceGwei.toFixed(2) + ' gwei' : ' (fallback)'} · ${(gasCostEth).toFixed(6)} ETH${ethUsd ? ' ($' + (gasCostEth * ethUsd).toFixed(4) + ')' : ''}`}>
-                  Bal: {walletEth.toFixed(4)} ETH
-                </span>
-              </div>
-              {(() => {
-                // Fondo neutro para la barra completa
-                const barBg = 'rgba(220,230,220,0.35)';
-                // Verde brillante para el porcentaje usado
-                let bg = 'linear-gradient(90deg,#43e97b 0%,#38f9d7 100%)';
-                if (pctUsage >= THRESH_WARN && pctUsage < THRESH_DANGER) bg = 'linear-gradient(90deg,#f1c40f,#f39c12)';
-                if (pctUsage >= THRESH_DANGER) bg = 'linear-gradient(90deg,#e74c3c,#c0392b)';
-                const width = Math.min(100, pctUsage);
-                return (
-                  <div style={{ position:'relative', height:6, background:barBg, borderRadius:4, overflow:'hidden', boxShadow:'0 0 0 1px rgba(255,255,255,0.08) inset' }} aria-label={`Using ${pctUsage.toFixed(2)}% of wallet balance`} title={`Est. gas ${(gasCostEth).toFixed(6)} ETH${ethUsd ? ' ($' + (gasCostEth*ethUsd).toFixed(4) + ')' : ''} · Máx seguro ~${effectiveMaxSendEth.toFixed(6)} ETH${ethUsd ? ' ($' + (effectiveMaxSendEth*ethUsd).toFixed(2) + ')' : ''}`}>
-                    <div style={{ position:'absolute', inset:0, width: width + '%', background:bg, transition:'width .35s ease' }} />
-                    {exceedsBalance && (
-                      <div style={{ position:'absolute', inset:0, background:'repeating-linear-gradient(45deg,rgba(255,0,0,0.55) 0 6px, rgba(255,0,0,0.15) 6px 12px)', mixBlendMode:'screen' }} />
-                    )}
-                  </div>
-                );
-              })()}
-            </div>
-          )}
-
-          {/* Badge de gas estimado */}
-          <div style={{ marginTop:'.4rem', display:'flex', gap:'.5rem', flexWrap:'wrap', fontSize:'.52rem', letterSpacing:'.4px', alignItems:'center' }}>
-            <span style={{ background:'rgba(255,255,255,0.07)', border:'1px solid rgba(255,255,255,0.15)', padding:'.28rem .5rem', borderRadius:6 }} title={gasEstimating ? 'Estimating gas…' : `Gas units ~${usedGasUnits.toLocaleString()} · Cost ${(gasCostEth).toFixed(6)} ETH${ethUsd ? ' ($' + (gasCostEth*ethUsd).toFixed(4) + ')' : ''}`}>
-              Gas: {gasEstimating ? '…' : (gasCostEth).toFixed(6)} ETH{ethUsd && !gasEstimating && <span style={{ opacity:.8 }}> (${(gasCostEth*ethUsd).toFixed(4)})</span>}
-            </span>
-            <span style={{ background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.12)', padding:'.28rem .55rem', borderRadius:6 }} title={`Máx seguro (balance - gas): ~${effectiveMaxSendEth.toFixed(6)} ETH${ethUsd ? ' ($' + (effectiveMaxSendEth*ethUsd).toFixed(2) + ')' : ''}`}>
-              Max send ≈ {effectiveMaxSendEth.toFixed(6)} ETH
-            </span>
+    <div className="card">
+      <form className="donate-form inline-layout" onSubmit={handleSubmit} autoComplete="off">
+        <div className="donate-input-wrap" style={{ display: 'flex', gap: '.45rem', alignItems: 'center', width: '100%' }}>
+          <input
+            type="number"
+            min="0"
+            step="any"
+            placeholder="Amount in ETH"
+            value={ethAmount}
+            onChange={e => setEthAmount(e.target.value)}
+            required
+            style={{ flex: 1, minWidth: 0, maxWidth: '100%' }}
+            inputMode="decimal"
+            className="mono"
+            disabled={isPending}
+          />
+          <span
+            className="badge"
+            style={{ fontSize: '.68rem', background: 'rgba(255,255,255,0.07)', color: 'var(--text-secondary)', border: '1px solid rgba(255,255,255,0.18)', fontWeight: 500, pointerEvents: 'none', userSelect: 'none', minWidth: 48, maxWidth: 70, textAlign: 'center', padding: '.22rem .55rem .20rem', borderRadius: '999px', letterSpacing: '.4px', height: '1.4rem', display: 'flex', alignItems: 'center', justifyContent: 'center', whiteSpace: 'nowrap', flexShrink: 0, marginLeft: '.08rem' }}
+          >
+            ≈ ${amountUsd}
+          </span>
+          <button
+            type="button"
+            className="btn ghost sm"
+            style={{ fontSize: '.6rem', padding: '.55rem .75rem', minHeight: '42px', display: 'inline-flex', alignItems: 'center' }}
+            onClick={fillMax}
+            disabled={!walletEth || walletEth <= gasBufferEth}
+          >
+            Max
+          </button>
+          <button className="btn donate-compact" type="submit" disabled={exceedsBalance || mismatch || (ready && !providerAvailable) || isPending} style={{ padding: '.55rem 1.0rem', fontSize: '.78rem', fontWeight: 600, whiteSpace: 'nowrap', opacity: exceedsBalance ? .55 : 1, minHeight: '42px', display: 'inline-flex', alignItems: 'center' }}>
+            {isPending ? 'Donating…' : 'Donate'}
+          </button>
+        </div>
+        {/* Indicadores de porcentaje y balance */}
+        <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '.65rem', color: 'var(--text-secondary)', marginTop: '0', marginBottom: '0', fontWeight: 600 }}>
+          <span>Usage: {walletEth > 0 && ethAmount && !isNaN(numericAmount) && numericAmount > 0 ? `${Math.min(100, ((numericAmount / walletEth) * 100)).toFixed(2)}%` : '0%'}</span>
+          <span style={{ fontFamily: 'JetBrains Mono, monospace' }}>Bal: {walletEth.toFixed(6)} ETH</span>
+        </div>
+        {/* Barra de porcentaje donado */}
+        <div style={{ width: '100%', marginTop: '0', marginBottom: '0', height: 6, background: 'rgba(255,255,255,0.08)', borderRadius: 4, overflow: 'hidden' }}>
+          <div
+            style={{
+              width: walletEth > 0 && ethAmount && !isNaN(numericAmount) && numericAmount > 0 ? `${Math.min(100, (numericAmount / walletEth) * 100)}%` : '0%',
+              height: '100%',
+              background: 'linear-gradient(90deg,#2ecc71,#27ae60)',
+              transition: 'width 0.3s',
+            }}
+          />
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.28rem', marginTop: '.06rem', alignItems: 'center' }}>
+          <span className="badge" style={{ fontSize: '.58rem', padding: '.22rem .45rem', background: 'linear-gradient(135deg,#2b2f3b,#1d2028)', color: 'var(--text-secondary)' }}>
+            Gas: {gasCostEth.toFixed(6)} ETH{ethUsd && <> (${(gasCostEth*ethUsd).toFixed(4)})</>}
+          </span>
+          <span className="badge" style={{ fontSize: '.58rem', padding: '.22rem .45rem', background: 'linear-gradient(135deg,#2b2f3b,#1d2028)', color: 'var(--text-secondary)' }}>
+            Max send ≈ {effectiveMaxSendEth.toFixed(6)} ETH
+          </span>
+        </div>
+        {donateError && <div className="alert" style={{ marginTop: '.7rem' }}>{donateError}</div>}
+      </form>
+      {/* Preview Split - Off-chain estimation */}
+      {ethAmount && !isNaN(numericAmount) && numericAmount > 0 && Array.isArray(BENEFICIARIES) && BENEFICIARIES.length > 0 && (
+        <div className="card" style={{ marginTop: '1.1rem', marginBottom: '.7rem', background: 'rgba(46,204,113,0.07)', border: '1px solid rgba(46,204,113,0.18)', borderRadius: 12, padding: '1.1rem 1.2rem' }}>
+          <div style={{ fontWeight: 700, fontSize: '.98rem', marginBottom: '.7rem', color: '#2ecc71', letterSpacing: '.2px' }}>
+            Preview Split <span style={{ fontWeight: 400, color: 'var(--text-secondary)', fontSize: '.92em' }}>(off-chain estimation)</span>
           </div>
-
-          {exceedsBalance && (
-            <div className="alert" style={{ marginTop:'.45rem' }}>
-              Amount entered ({numericAmount.toFixed(6)} ETH) is greater than your wallet balance ({walletEth.toFixed(6)} ETH).
-            </div>
-          )}
-
-          {/* Preview Split */}
-          {ethAmount && !isNaN(Number(ethAmount)) && Number(ethAmount) > 0 && (
-            <div style={{ marginTop:'.75rem', background:'linear-gradient(145deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02))', border:'1px solid rgba(255,255,255,0.15)', padding:'.75rem .8rem .85rem', borderRadius:10, position:'relative', overflow:'hidden' }}>
-              <div style={{ position:'absolute', inset:0, pointerEvents:'none', background:'radial-gradient(circle at 85% 15%, rgba(255,255,255,0.15), transparent 60%)', opacity:.35 }} />
-              <div style={{ fontWeight:600, fontSize:'.68rem', letterSpacing:'.5px', marginBottom:'.55rem', display:'flex', alignItems:'center', gap:'.5rem' }}>
-                <span style={{ background:'rgba(255,255,255,0.08)', padding:'.32rem .55rem', borderRadius:6, border:'1px solid rgba(255,255,255,0.15)', fontSize:'.55rem' }}>Preview Split</span>
-                <span style={{ fontSize:'.48rem', opacity:.55, textTransform:'uppercase', letterSpacing:'.6px' }}>Off-chain estimation</span>
-              </div>
-              <div style={{ display:'grid', gap:'.45rem' }}>
-                {BENEFICIARIES.map(b => {
-                  const amountEth = Number(ethAmount);
-                  const share = (amountEth * b.bps) / 10000;
-                  const pctNum = (b.bps/100);
-                  const barGradient = 'linear-gradient(90deg,var(--accent) 0%, var(--accent-alt) 100%)';
-                  return (
-                    <div key={b.address} style={{ display:'grid', gridTemplateColumns:'minmax(140px,1fr) auto', alignItems:'center', gap:'.75rem' }}>
-                      <div style={{ display:'flex', flexDirection:'column', gap:'.3rem' }}>
-                        <div style={{ display:'flex', alignItems:'center', gap:'.45rem', flexWrap:'wrap' }}>
-                          <span style={{ fontFamily:'monospace', fontSize:'.65rem', background:'rgba(255,255,255,0.07)', padding:'.25rem .45rem', borderRadius:5, border:'1px solid rgba(255,255,255,0.15)' }}>{pctNum.toFixed(2)}%</span>
-                          <span style={{ fontSize:'.63rem', fontWeight:600, letterSpacing:'.3px' }}>{b.label}</span>
-                        </div>
-                        <div style={{ position:'relative', height:6, background:'rgba(255,255,255,0.08)', borderRadius:4, overflow:'hidden' }}>
-                          <div style={{ position:'absolute', inset:0, width:`${pctNum}%`, background:barGradient, boxShadow:'0 0 0 1px rgba(255,255,255,0.08) inset', transition:'width .4s ease' }} />
-                        </div>
-                      </div>
-                      <div style={{ fontFamily:'monospace', fontSize:'.6rem', fontWeight:500, textAlign:'right', display:'flex', flexDirection:'column', alignItems:'flex-end', gap:'.15rem' }}>
-                        <span>{share.toFixed(6)} ETH</span>
-                        {ethUsd && <span style={{ fontSize:'.47rem', opacity:.65 }}>${(share*ethUsd).toFixed(2)}</span>}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              <div style={{ marginTop:'.55rem', fontSize:'.5rem', letterSpacing:'.4px', opacity:.7, display:'flex', alignItems:'center', gap:'.5rem', flexWrap:'wrap' }}>
-                <span>Residual rounding → last beneficiary.</span>
-                <span style={{ background:'rgba(255,255,255,0.07)', padding:'.25rem .45rem', borderRadius:5, fontSize:'.48rem', border:'1px solid rgba(255,255,255,0.15)' }}>Approximate</span>
-              </div>
-            </div>
-          )}
-
-          {donateError && <p className="alert" style={{ marginTop: '.5rem' }}>Donate error: {donateError}</p>}
-          {mismatch && <p className="note" style={{ marginTop: '.5rem' }}>Switch wallet network to id {TARGET_CHAIN_ID} to enable donations.</p>}
-          {ready && !providerAvailable && !mismatch && <p className="note" style={{ marginTop: '.5rem' }}>Provider not detected. Re-open in MetaMask browser or refresh after returning from app switch.</p>}
-          {/* How It Works Modal */}
-          {howOpen && (
-            <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:1600, display:'flex', alignItems:'center', justifyContent:'center', padding:'1.5rem' }} role="dialog" aria-modal="true" aria-label="How It Works">
-              <div className="card" style={{ maxWidth:580, maxHeight:'72vh', overflow:'auto', gap:'.9rem' }}>
-                <div className="card-header-row">
-                  <h2 style={{ margin:0 }}>How It Works</h2>
-                  <button type="button" className="btn ghost sm" onClick={()=>setHowOpen(false)}>Close</button>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '.7rem' }}>
+            {BENEFICIARIES.map((b: any) => (
+              <div key={b.address} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(46,204,113,0.13)', borderRadius: 8, padding: '.7rem .8rem', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '.2rem' }}>
+                <div style={{ fontWeight: 600, fontSize: '.93em', color: 'var(--text-primary)', display: 'flex', alignItems: 'center' }}>
+                  {b.logoSrc ? (
+                    <img src={b.logoSrc} alt={b.label} style={{ width: 22, height: 22, marginRight: '.4em', borderRadius: 4, background: '#fff', objectFit: 'contain', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }} />
+                  ) : b.icon ? (
+                    <span style={{ marginRight: '.4em' }}>{b.icon}</span>
+                  ) : null}
+                  {b.label}
                 </div>
-                <HowItWorksBody />
+                <div style={{ fontSize: '.82em', color: 'var(--text-secondary)' }}>{(b.bps / 100).toFixed(2)}%</div>
+                <div style={{ fontFamily: 'JetBrains Mono, monospace', fontWeight: 600, color: '#27ae60', fontSize: '.98em' }}>
+                  +{((numericAmount * b.bps) / 10000).toFixed(6)} ETH
+                  {ethUsd && <span style={{ fontSize: '.82em', color: 'var(--text-secondary)', marginLeft: 6 }}> (${((numericAmount * b.bps) / 10000 * ethUsd).toFixed(2)})</span>}
+                </div>
               </div>
-            </div>
-          )}
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-// Local expandable How It Works section component
-function HowItWorksBody() {
-  return (
-    <div style={{ fontSize: '.85rem', lineHeight: 1.5, display: 'grid', gap: '.9rem' }}>
-      <p>
-        DonationSplitter lets donors send ETH once while the contract accounts for beneficiary percentages. Each recipient can later withdraw only what has been allocated to them.
-      </p>
-      <ol style={{ margin: 0, paddingLeft: '1.1rem', display: 'grid', gap: '.4rem' }}>
-        <li><strong>Connect</strong>: Attach your wallet.</li>
-        <li><strong>Donate</strong>: Send ETH; the contract records distribution using predefined shares.</li>
-        <li><strong>Accrual</strong>: Pending balances accumulate per beneficiary.</li>
-        <li><strong>Withdraw</strong>: Beneficiaries call withdraw to claim their accrued ETH.</li>
-      </ol>
-      <p className="muted" style={{ margin: 0 }}>All logic is on-chain: no off-chain accounting or custodial elements.</p>
-    </div>
-  );
-}

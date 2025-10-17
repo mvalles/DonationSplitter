@@ -2,8 +2,8 @@ import './App.css';
 import { useState, useEffect } from 'react';
 import { useAccount, useReadContract, useChainId, useChains } from 'wagmi';
 import type { Chain } from 'viem';
-import { useDonateETH } from './hooks/contractWriteHooks';
-import { useLitEncryptDonorData } from './hooks/useLitEncryptDonorData';
+
+// import { useLitEncryptDonorData } from './hooks/useLitEncryptDonorData';
 import { useRefetchKey } from './context/RefetchContext';
 import { 
   DONATION_SPLITTER_ABI, 
@@ -34,7 +34,7 @@ function App() {
   const chains = useChains();
 
   // State management
-  const [ethAmount, setEthAmount] = useState('');
+
   const [showMainnetConfirm, setShowMainnetConfirm] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
 
@@ -93,35 +93,28 @@ function App() {
 
   // Hooks for refetching
   const { bump } = useRefetchKey();
-  const { donateETH } = useDonateETH();
-  const litEncryptDonorData = useLitEncryptDonorData();
+  // Eliminado: donateETH se debe usar solo cuando se integre el endpoint
+  // Eliminado: useLitEncryptDonorData ya no existe, cifrado se realiza vía endpoint
 
   // Handle successful donation
-  const handleDonationSuccess = () => {
-    bump();
-    try { 
-      window.dispatchEvent(new CustomEvent('ds_activity_refresh')); 
-    } catch { /* ignore */ }
-  };
 
   // Handle mainnet confirmation
   const handleMainnetConfirm = async () => {
     setShowMainnetConfirm(false);
     try {
-      const value = ethAmount && !isNaN(Number(ethAmount)) ? BigInt(Math.floor(Number(ethAmount.toString()) * 1e18)) : undefined;
-      if (!value) throw new Error('Invalid amount');
+
 
   // --- LIT ENCRYPTION (usando hook) ---
   if (!ownerAddress) throw new Error('Owner address not loaded');
   // Usa el nombre de la red activa o el chainId como fallback
-  const networkName = activeChain?.name || activeChain?.id?.toString() || 'unknown';
-  const litPayload = await litEncryptDonorData(address || '', ownerAddress, networkName);
-
-  // Llama a donateETH pasando el valor y el payload como URI temporal (en producción, subirías a Irys y pasarías el URI real)
-  const tx = await donateETH(litPayload, value);
-      setEthAmount('');
-      handleDonationSuccess();
-      console.log('Donation TX sent:', tx);
+  // Eliminado: networkName solo necesario si se integra con endpoint
+  // Aquí deberías llamar al endpoint serverless para cifrar y subir a Irys, y luego obtener el URI resultante
+  // const uri = await fetch('/api/irys-upload', ...)
+  // const tx = await donateETH(uri, value);
+  // Aquí deberías llamar a setEthAmount('') y handleDonationSuccess() después de la transacción exitosa
+  // setEthAmount('');
+  // handleDonationSuccess();
+  // console.log('Donation TX sent:', 'tx'); // tx eliminado, solo para referencia
     } catch (err) {
       console.error('Donation error:', err);
     }
@@ -202,9 +195,10 @@ function App() {
                 role={role}
                 TARGET_CHAIN_ID={TARGET_CHAIN_ID}
                 TARGET_CHAIN_LABEL={TARGET_CHAIN_LABEL}
-                onDonationSuccess={handleDonationSuccess}
+                onDonationSuccess={() => bump()}
                 setShowMainnetConfirm={setShowMainnetConfirm}
                 showMainnetConfirm={showMainnetConfirm}
+                ownerAddress={ownerAddress as string}
               />
               {role === 'beneficiary' && (
                 <WithdrawPanel
