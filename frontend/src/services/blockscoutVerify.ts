@@ -17,8 +17,8 @@ export async function isBlockscoutVerified(chainId: number, address: string): Pr
   if (blockscoutVerifyCache[cacheKey] !== undefined) {
     return blockscoutVerifyCache[cacheKey];
   }
-  if (blockscoutVerifyPending[cacheKey]) {
-    return blockscoutVerifyPending[cacheKey];
+  if (blockscoutVerifyPending[cacheKey] !== undefined) {
+    return await blockscoutVerifyPending[cacheKey];
   }
   blockscoutVerifyPending[cacheKey] = (async () => {
     try {
