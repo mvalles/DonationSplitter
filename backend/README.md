@@ -141,6 +141,9 @@ This section records production/test deployments so the `ignition/deployments` d
 
 | Date (UTC) | Network | Chain ID | Contract | Module Ref | Address | Deployer (EOA) | Commit | Notes |
 |-----------|---------|----------|----------|------------|---------|----------------|--------|-------|
+| 2025-10-17 | Sepolia (Testnet) | 11155111 | DonationSplitter | DonationSplitterModule#DonationSplitter | `0x3878099f278967592D2cAC34233016F3705295dE` | (deployer) | (commit) | Integración Lit Protocol + Irys |
+| Date (UTC) | Network | Chain ID | Contract | Module Ref | Address | Deployer (EOA) | Commit | Notes |
+|-----------|---------|----------|----------|------------|---------|----------------|--------|-------|
 | 2025-10-11 | Sepolia (Testnet) | 11155111 | DonationSplitter | DonationSplitterModule#DonationSplitter | `0x849E04a51573F61B33DeFA318fEDBF444240bAFb` | (first configured account) | 09b6658dd34cdd2b6d1ea86f0d94bb8f5012ffd7 | Initial tracked deployment (pre-mainnet) |
 | 2025-10-11 | Sepolia (Testnet) | 11155111 | DonationSplitter | DonationSplitterModule#DonationSplitter | `0xDAD9ccC85a59db6D2eFDC7fDDE9A1E6e3D17b798` | (deployer) | 4b44adfc1b8065223328148cebdb968aa40a9fb1 | Redeploy (beneficiary distribution update) |
 | (pending) | Ethereum Mainnet | 1 | DonationSplitter | DonationSplitterModule#DonationSplitter | (to add) | (deployer) | (commit) | First mainnet release |

@@ -34,12 +34,23 @@ const hardhatLocal: Chain = {
 
 
 // Usar el endpoint local solo para Hardhat, el resto (Sepolia, Mainnet) usan el RPC de la wallet/metamask
-const availableChains: Chain[] = [hardhatLocal, sepolia, mainnet];
+
+// Configura Sepolia para usar el endpoint RPC de Alchemy si está definido
+const sepoliaRpc = (import.meta as unknown as { env?: Record<string, string> })?.env?.VITE_SEPOLIA_RPC || import.meta.env.VITE_SEPOLIA_RPC;
+const sepoliaChain: Chain = {
+  ...sepolia,
+  rpcUrls: {
+    default: { http: sepoliaRpc ? [sepoliaRpc] : sepolia.rpcUrls.default.http }
+  }
+};
+
+const availableChains: Chain[] = [hardhatLocal, sepoliaChain, mainnet];
 const chainSelection: Chain[] = availableChains;
 
 const transports: Record<number, ReturnType<typeof http>> = {};
 chainSelection.forEach(ch => {
   if (ch.id === 31337) transports[ch.id] = http(hardhatRpc);
+  else if (ch.id === 11155111 && sepoliaRpc) transports[ch.id] = http(sepoliaRpc);
   else transports[ch.id] = http();
 });
 

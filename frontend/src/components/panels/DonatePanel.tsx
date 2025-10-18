@@ -20,7 +20,7 @@ interface DonatePanelProps {
   onDonationSuccess: () => void;
   setShowMainnetConfirm: (show: boolean) => void;
   showMainnetConfirm: boolean;
-  ownerAddress: string; // NUEVO: dirección del owner
+  ownerAddress: string; // NEW: owner address
   [key: string]: unknown;
 }
 
@@ -38,13 +38,14 @@ export function DonatePanel({
   ownerAddress,
 }: DonatePanelProps) {
   const [ethAmount, setEthAmount] = useState('');
+  const [donorEmail, setDonorEmail] = useState('');
   const [donateError, setDonateError] = useState<string | null>(null);
   const [estGasUnits, setEstGasUnits] = useState<number|undefined>();
   const [gasPriceWei, setGasPriceWei] = useState<bigint|undefined>();
   const [ethUsd, setEthUsd] = useState<number|undefined>();
   const publicClient = usePublicClient();
   const { donateETH, isPending } = useDonateETH();
-  // Usar ownerAddress recibido por prop
+  // Use ownerAddress received via prop
   const encryptDonorDataWithLit = useLitEncryptDonorData(DONATION_SPLITTER_ADDRESS, ownerAddress);
   const { data: userBalance } = useBalance({
     address: address as `0x${string}` | undefined,
@@ -86,7 +87,7 @@ export function DonatePanel({
           address: runtimeAddress as `0x${string}`,
           abi: DONATION_SPLITTER_ABI,
           functionName: 'donateETH',
-          args: [""], // argumento dummy para cumplir el tipado, ajustar si el contrato requiere otro
+          args: [""], // dummy argument to satisfy typing, adjust if contract requires something else
           value: valueWei,
           account: address as `0x${string}` | undefined,
         }).catch(()=>undefined);
@@ -95,7 +96,7 @@ export function DonatePanel({
       } catch (err) {
         if (!cancelled) setDonateError((err as Error).message);
       } finally {
-  // eliminado setGasEstimating
+  // removed setGasEstimating
       }
     }
     run();
@@ -114,7 +115,7 @@ export function DonatePanel({
           setEthUsd(v); 
         }
       } catch { 
-        // Silenciar error de precio USD
+  // Silence USD price error
       }
     }
     load();
@@ -138,30 +139,61 @@ export function DonatePanel({
         setDonateError('Enter a valid amount');
         return;
       }
-      // --- Flujo Lit+Irys: cifrar y subir antes de donar ---
-  const donorData = JSON.stringify({ donor: address, amount: ethAmount, timestamp: Date.now() });
-  // Solo pasar string, nunca binario
+  // --- Lit+Irys flow: encrypt and upload before donating ---
+      const donorData = JSON.stringify({
+        donor: address,
+        amount: ethAmount,
+        timestamp: Date.now(),
+        email: donorEmail || undefined
+      });
+  // Only pass string, never binary
   console.log('[DonatePanel] Donor data to encrypt (string):', donorData, typeof donorData);
-  const encryptedResult = await encryptDonorDataWithLit(donorData);
+      const encryptedResult = await encryptDonorDataWithLit(donorData);
   console.log('[DonatePanel] Encrypted result from Lit+Irys:', encryptedResult);
-  const { uri } = encryptedResult;
-      // Llamada original a donateETH, ahora con el uri
+      const { uri } = encryptedResult;
+  // Original call to donateETH, now with uri
       const value = BigInt(Math.floor(numericAmount * 1e18));
-      console.log('[DonatePanel] Calling donateETH with:', { uri, value });
+  console.log('[DonatePanel] Calling donateETH with:', { uri, value });
       await donateETH(uri, value);
-      setEthAmount('');
+  setEthAmount('');
+  setDonorEmail('');
       if (typeof onDonationSuccess === 'function') onDonationSuccess();
     } catch (err) {
-      console.error('[DonatePanel] Error in donation flow:', err);
+  console.error('[DonatePanel] Error in donation flow:', err);
       setDonateError((err as Error).message);
     }
   };
 
-  // Cálculo USD
+  // USD calculation
   const amountUsd = ethAmount && !isNaN(numericAmount) && ethUsd ? (numericAmount * ethUsd).toFixed(2) : '0.00';
   return (
     <div className="card">
-      <form className="donate-form inline-layout" onSubmit={handleSubmit} autoComplete="off">
+  <form className="donate-form inline-layout" onSubmit={handleSubmit} autoComplete="off">
+        <div style={{ width: '100%', marginBottom: '.7rem' }}>
+          <label htmlFor="donor-email" style={{ fontSize: '.92rem', fontWeight: 500, color: 'var(--text-secondary)', marginBottom: '.18rem', display: 'block' }}>Email (optional)</label>
+          <input
+            id="donor-email"
+            type="email"
+            placeholder="Enter your email address to receive a private thank you note."
+            value={donorEmail}
+            onChange={e => setDonorEmail(e.target.value)}
+            style={{
+              width: '100%',
+              fontSize: '.98rem',
+              padding: '.55rem .9rem',
+              borderRadius: '8px',
+              border: '1px solid #2ecc71',
+              background: 'rgba(46,204,113,0.07)',
+              color: 'var(--text-primary)',
+              marginBottom: '.08rem',
+              fontFamily: 'JetBrains Mono, monospace',
+              boxSizing: 'border-box'
+            }}
+            inputMode="email"
+            className="mono"
+            disabled={isPending}
+          />
+        </div>
         <div className="donate-input-wrap" style={{ display: 'flex', gap: '.45rem', alignItems: 'center', width: '100%' }}>
           <input
             type="number"
@@ -178,7 +210,28 @@ export function DonatePanel({
           />
           <span
             className="badge"
-            style={{ fontSize: '.68rem', background: 'rgba(255,255,255,0.07)', color: 'var(--text-secondary)', border: '1px solid rgba(255,255,255,0.18)', fontWeight: 500, pointerEvents: 'none', userSelect: 'none', minWidth: 48, maxWidth: 70, textAlign: 'center', padding: '.22rem .55rem .20rem', borderRadius: '999px', letterSpacing: '.4px', height: '1.4rem', display: 'flex', alignItems: 'center', justifyContent: 'center', whiteSpace: 'nowrap', flexShrink: 0, marginLeft: '.08rem' }}
+            style={{
+              fontSize: '.68rem',
+              background: 'rgba(255,255,255,0.07)',
+              color: 'var(--text-secondary)',
+              border: '1px solid rgba(255,255,255,0.18)',
+              fontWeight: 500,
+              pointerEvents: 'none',
+              userSelect: 'none',
+              minWidth: 48,
+              maxWidth: 70,
+              textAlign: 'center',
+              padding: '.55rem .55rem',
+              borderRadius: '999px',
+              letterSpacing: '.4px',
+              height: '42px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              whiteSpace: 'nowrap',
+              flexShrink: 0,
+              marginLeft: '.08rem'
+            }}
           >
             ≈ ${amountUsd}
           </span>

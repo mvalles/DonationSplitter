@@ -23,7 +23,7 @@ interface Options { limit?: number; pollMs?: number; chainId?: number }
 const DONATION_RECORDED_EVENT = 'DonationRecorded';
 const WITHDRAWN_EVENT = 'Withdrawn';
 
-export function useDonationActivity({ limit = 50, pollMs = 15000, chainId }: Options = {}) {
+export function useDonationActivity({ limit = 50, pollMs = 60000, chainId }: Options = {}) {
   // Siempre anclar al chain configurado salvo override explícito
   const runtimeChainId = chainId || CONFIG_TARGET_CHAIN_ID;
   // Pedimos un public client para ese chain específicamente (evita depender del chain de la wallet si está en otro)

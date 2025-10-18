@@ -1,6 +1,8 @@
 import { useState, useRef } from 'react';
+import { useReadContract } from 'wagmi';
+import { getDonationSplitterAddress, DONATION_SPLITTER_ABI } from '../../config/contractInfo';
+import { ActivityRow } from './ActivityRow';
 import { useDonationActivity } from '../../hooks/useDonationActivity';
-import { blockscoutTxUrl, blockscoutAddressUrl } from '../../services/blockscout';
 
 interface ActivityPanelProps {
   chainId: number;
@@ -8,6 +10,15 @@ interface ActivityPanelProps {
 }
 
 export function ActivityPanel({ chainId, ...rest }: ActivityPanelProps) {
+  const contractAddress = getDonationSplitterAddress(chainId);
+  // Leer el owner real del contrato
+  const { data: ownerAddressData } = useReadContract({
+    address: contractAddress,
+    abi: DONATION_SPLITTER_ABI,
+    functionName: 'owner',
+    query: { enabled: !!contractAddress }
+  });
+  const ownerAddress = ownerAddressData as string || '';
   const [typeFilter, setTypeFilter] = useState<'all'|'donate'|'withdraw'>('all');
   const [limit, setLimit] = useState(25);
   const [fullHistoryProgress, setFullHistoryProgress] = useState<{windows:number; running:boolean}>({ windows:0, running:false });
@@ -97,9 +108,6 @@ export function ActivityPanel({ chainId, ...rest }: ActivityPanelProps) {
           </div>
         </div>
         
-        {fullHistoryProgress.running && (
-          <div style={{ fontSize:'.55rem', opacity:.7 }}>Loading full history… windows {fullHistoryProgress.windows}</div>
-        )}
         
         {toast && (
           <div style={{ position:'relative' }}>
@@ -111,63 +119,15 @@ export function ActivityPanel({ chainId, ...rest }: ActivityPanelProps) {
         
         <div style={{ display:'grid', gap:'.4rem' }}>
           {!filtered.length && !loading && <div style={{ fontSize:'.65rem', opacity:.7 }}>No activity yet.</div>}
-          {filtered.map(ev => {
-            const rel = ev.timestamp ? timeAgo(ev.timestamp*1000) : '—';
-            const explorer = blockscoutTxUrl(chainId, ev.txHash);
-            const addrExplorer = blockscoutAddressUrl(chainId, ev.address);
-            const roleLabel = ev.type === 'donate' ? 'DONOR' : 'BENEFICIARY';
-            // Si el evento tiene uri (Irys), construir enlace
-            const irysUrl = (ev as any).uri ? `https://gateway.irys.xyz/${(ev as any).uri}` : null;
-            return (
-              <div
-                key={ev.id}
-                style={{
-                  display:'flex',
-                  alignItems:'center',
-                  gap:'.6rem',
-                  padding:'.5rem .65rem',
-                  background:'rgba(255,255,255,0.04)',
-                  border:'1px solid rgba(255,255,255,0.1)',
-                  borderRadius:8,
-                  fontSize:'.55rem',
-                  flexWrap:'wrap'
-                }}
-              >
-                <span className={`activity-type ${ev.type}`} style={{ minWidth:'fit-content' }}>
-                  {ev.type === 'donate' ? '💰' : '💸'} {ev.type.toUpperCase()}
-                </span>
-                <span className="mono" style={{ flex:'1 1 auto', minWidth:'140px' }}>
-                  {ev.amountEth.toFixed(6)} ETH
-                </span>
-                <span className={`role-chip ${ev.type === 'donate' ? 'donor' : 'beneficiary'}`} style={{ fontSize:'.48rem', padding:'.2rem .4rem' }}>
-                  {roleLabel}
-                </span>
-                {addrExplorer ? (
-                  <a href={addrExplorer} target="_blank" rel="noopener noreferrer" className="addr-link mono" style={{ textDecoration:'none', color:'var(--accent)' }}>
-                    {ev.address.slice(0,6)}...{ev.address.slice(-4)} ↗
-                  </a>
-                ) : (
-                  <span className="mono" style={{ opacity:.6 }}>
-                    {ev.address.slice(0,6)}...{ev.address.slice(-4)}
-                  </span>
-                )}
-                {irysUrl ? (
-                  <a href={irysUrl} target="_blank" rel="noopener noreferrer" className="tx-link mono" style={{ textDecoration:'none', color:'#ffb300', fontWeight:600 }}>
-                    Irys ↗
-                  </a>
-                ) : explorer ? (
-                  <a href={explorer} target="_blank" rel="noopener noreferrer" className="tx-link mono" style={{ textDecoration:'none', color:'var(--accent-alt)' }}>
-                    {ev.txHash.slice(0,6)}...{ev.txHash.slice(-4)} ↗
-                  </a>
-                ) : (
-                  <span className="mono" style={{ opacity:.6 }}>
-                    {ev.txHash.slice(0,6)}...{ev.txHash.slice(-4)}
-                  </span>
-                )}
-                <span style={{ opacity:.5, fontSize:'.5rem', minWidth:'fit-content' }}>{rel}</span>
-              </div>
-            );
-          })}
+          {filtered.map(ev => (
+            <ActivityRow
+              key={ev.id}
+              ev={ev}
+              chainId={chainId}
+              contractAddress={contractAddress}
+              ownerAddress={ownerAddress}
+            />
+          ))}
           {manualLoading && (
             <div style={{ display:'flex', alignItems:'center', justifyContent:'center', padding:'1rem', opacity:.6 }}>
               Loading more activity...
@@ -182,13 +142,4 @@ export function ActivityPanel({ chainId, ...rest }: ActivityPanelProps) {
       </div>
     </div>
   );
-}
-
-function timeAgo(tsMs: number) {
-  const diff = Date.now() - tsMs;
-  const s = Math.floor(diff/1000);
-  if (s < 60) return s + 's ago';
-  const m = Math.floor(s/60); if (m < 60) return m + 'm ago';
-  const h = Math.floor(m/60); if (h < 24) return h + 'h ago';
-  const d = Math.floor(h/24); return d + 'd ago';
 }
